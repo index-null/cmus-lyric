@@ -1,0 +1,69 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/lyrics
+    binary: lyrics
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+release:
+  github:
+    owner: index-null
+    name: cmus-lyric
+  header: |
+    ## Installation
+
+    ```bash
+    # Homebrew (macOS / Linux)
+    brew install index-null/tap/lyrics
+
+    # Go
+    go install github.com/index-null/cmus-lyric/cmd/lyrics@{{ .Tag }}
+
+    # Shell script
+    curl -fsSL https://raw.githubusercontent.com/index-null/cmus-lyric/master/install.sh | bash
+    ```
+
+homebrew_casks:
+  - name: lyrics
+    binaries:
+      - lyrics
+    repository:
+      owner: index-null
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    commit_author:
+      name: index-null
+      email: index-null@users.noreply.github.com
+    homepage: https://github.com/index-null/cmus-lyric
+    description: Terminal-based synced lyrics viewer for cmus
+    caveats: Requires cmus to be running. Start cmus first, then run 'lyrics'.

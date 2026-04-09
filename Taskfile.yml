@@ -1,0 +1,56 @@
+version: "3"
+
+vars:
+  BIN_NAME: lyrics
+  MODULE: github.com/index-null/cmus-lyric
+
+tasks:
+  default:
+    desc: Build the binary
+    cmds:
+      - task: build
+
+  build:
+    desc: Build for current platform
+    cmds:
+      - go build -o bin/{{.BIN_NAME}} ./cmd/lyrics
+
+  install:
+    desc: Install to /usr/local/bin
+    deps: [build]
+    cmds:
+      - install -d /usr/local/bin/
+      - install -m 755 bin/{{.BIN_NAME}} /usr/local/bin/{{.BIN_NAME}}
+
+  run:
+    desc: Build and run
+    deps: [build]
+    cmds:
+      - ./bin/{{.BIN_NAME}}
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf bin/ dist/
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -race -cover ./...
+
+  tidy:
+    desc: Tidy modules
+    cmds:
+      - go mod tidy
+
+  check:
+    desc: Run all quality checks
+    cmds:
+      - task: tidy
+      - task: lint
+      - task: test
