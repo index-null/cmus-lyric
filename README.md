@@ -1,10 +1,28 @@
+<p align="center">
+  <img src="./images/banner.png" alt="cmus-lyric banner" width="600" />
+</p>
+
+<p align="center">
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go&logoColor=white" alt="Go"></a>
+  <a href="https://github.com/charmbracelet/bubbletea"><img src="https://img.shields.io/badge/Bubble_Tea-TUI-ff69b4?style=flat" alt="Bubble Tea"></a>
+  <a href="https://github.com/charmbracelet/lipgloss"><img src="https://img.shields.io/badge/Lipgloss-Styling-7D56F4?style=flat" alt="Lipgloss"></a>
+  <a href="https://github.com/charmbracelet/bubbles"><img src="https://img.shields.io/badge/Bubbles-Components-AD8EE6?style=flat" alt="Bubbles"></a>
+  <a href="https://lrclib.net"><img src="https://img.shields.io/badge/LRCLIB-Lyrics_API-4CAF50?style=flat" alt="LRCLIB"></a>
+  <a href="https://github.com/index-null/cmus-lyric/releases/latest"><img src="https://img.shields.io/github/v/release/index-null/cmus-lyric?style=flat&color=blue" alt="Release"></a>
+  <a href="https://github.com/index-null/cmus-lyric/blob/master/LICENSE"><img src="https://img.shields.io/github/license/index-null/cmus-lyric?style=flat" alt="License"></a>
+</p>
+
 # cmus-lyric
 
 English | [中文](README_zh.md)
 
 A terminal-based synced lyrics viewer for [cmus](https://cmus.github.io/), built with [Bubble Tea](https://github.com/charmbracelet/bubbletea).
 
-> Inspired by [rockagen/cmus-lyric](https://github.com/rockagen/cmus-lyric), rewritten from scratch with a modern Go stack.
+> Inspired by [pekrockstar/cmus-lyric](https://github.com/pekrockstar/cmus-lyric), rewritten from scratch with a modern Go stack.
+
+<p align="center">
+  <img src="./images/demo.png" alt="cmus-lyric demo" width="600" />
+</p>
 
 ## Overview
 
@@ -74,10 +92,10 @@ Start cmus and play a song, then in another terminal:
 lyrics
 ```
 
-| Key           | Action      |
-| ------------- | ----------- |
-| `q` `Ctrl+C`  | Quit        |
-| `?`           | Toggle help |
+| Key          | Action      |
+| ------------ | ----------- |
+| `q` `Ctrl+C` | Quit        |
+| `?`          | Toggle help |
 
 ### How lyrics are resolved
 
@@ -124,6 +142,7 @@ git push origin v0.1.0
 ```
 
 This triggers the workflow which:
+
 1. Builds binaries for linux/darwin x amd64/arm64
 2. Creates a GitHub Release with checksums
 3. Updates the Homebrew tap formula

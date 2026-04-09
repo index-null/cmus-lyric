@@ -1,10 +1,28 @@
+<p align="center">
+  <img src="./images/banner.png" alt="cmus-lyric banner" width="600" />
+</p>
+
+<p align="center">
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go&logoColor=white" alt="Go"></a>
+  <a href="https://github.com/charmbracelet/bubbletea"><img src="https://img.shields.io/badge/Bubble_Tea-TUI-ff69b4?style=flat" alt="Bubble Tea"></a>
+  <a href="https://github.com/charmbracelet/lipgloss"><img src="https://img.shields.io/badge/Lipgloss-Styling-7D56F4?style=flat" alt="Lipgloss"></a>
+  <a href="https://github.com/charmbracelet/bubbles"><img src="https://img.shields.io/badge/Bubbles-Components-AD8EE6?style=flat" alt="Bubbles"></a>
+  <a href="https://lrclib.net"><img src="https://img.shields.io/badge/LRCLIB-Lyrics_API-4CAF50?style=flat" alt="LRCLIB"></a>
+  <a href="https://github.com/index-null/cmus-lyric/releases/latest"><img src="https://img.shields.io/github/v/release/index-null/cmus-lyric?style=flat&color=blue" alt="Release"></a>
+  <a href="https://github.com/index-null/cmus-lyric/blob/master/LICENSE"><img src="https://img.shields.io/github/license/index-null/cmus-lyric?style=flat" alt="License"></a>
+</p>
+
 # cmus-lyric
 
 [English](README.md) | 中文
 
 基于 [Bubble Tea](https://github.com/charmbracelet/bubbletea) 构建的终端歌词同步查看器，专为 [cmus](https://cmus.github.io/) 设计。
 
-> 灵感来自 [rockagen/cmus-lyric](https://github.com/rockagen/cmus-lyric)，使用现代 Go 技术栈从零重写。
+> 灵感来自 [pekrockstar/cmus-lyric](https://github.com/pekrockstar/cmus-lyric)，使用现代 Go 技术栈从零重写。
+
+<p align="center">
+  <img src="./images/demo.png" alt="cmus-lyric demo" width="600" />
+</p>
 
 ## 简介
 
@@ -74,10 +92,10 @@ task install   # 或: go build -o lyrics ./cmd/lyrics && sudo mv lyrics /usr/loc
 lyrics
 ```
 
-| 按键          | 功能     |
-| ------------- | -------- |
-| `q` `Ctrl+C`  | 退出     |
-| `?`           | 帮助     |
+| 按键         | 功能 |
+| ------------ | ---- |
+| `q` `Ctrl+C` | 退出 |
+| `?`          | 帮助 |
 
 ### 歌词解析逻辑
 
@@ -124,6 +142,7 @@ git push origin v0.1.0
 ```
 
 自动完成：
+
 1. 构建 linux/darwin x amd64/arm64 四平台二进制
 2. 创建 GitHub Release 并附带校验和
 3. 更新 Homebrew tap
