@@ -111,7 +111,7 @@ func (m Model) poll() Model {
 		m.errMsg = ""
 		m.fetchingMsg = ""
 
-		lyrics := loadLyrics(track.File)
+		lyrics := loadLyrics(track.File, track.Title)
 		if lyrics == nil {
 			m.fetchingMsg = "fetching lyrics..."
 			err := lyric.FetchForCmus(track.File, track.Duration, track.Artist, track.Title)
@@ -121,7 +121,7 @@ func (m Model) poll() Model {
 				m.lyrics = nil
 				return m
 			}
-			lyrics = loadLyrics(track.File)
+			lyrics = loadLyrics(track.File, track.Title)
 		}
 		m.lyrics = lyrics
 		m.curLineIdx = -1
@@ -409,32 +409,46 @@ func (m Model) renderHelp() string {
 
 // --- Lyric loading ---
 
-func loadLyrics(path string) []lyricLine {
+func loadLyrics(path, title string) []lyricLine {
 	pathIdx := strings.LastIndexAny(path, ".")
 	base := path[:pathIdx]
+	dir := path[:strings.LastIndexAny(path, "/")]
 
 	extensions := []string{".lyric", ".lrc"}
+
+	bases := []string{base}
+	if len(title) > 0 {
+		titleBase := dir + "/" + title
+		if titleBase != base {
+			bases = append(bases, titleBase)
+		}
+	}
 
 	var content []byte
 	var tlines []string
 	found := false
 
-	for _, ext := range extensions {
-		lpath := base + ext
-		c, e := os.ReadFile(lpath)
-		if e != nil {
-			continue
-		}
-		content = c
-		found = true
+	for _, b := range bases {
+		for _, ext := range extensions {
+			lpath := b + ext
+			c, e := os.ReadFile(lpath)
+			if e != nil {
+				continue
+			}
+			content = c
+			found = true
 
-		tlpath := base + ".t" + ext
-		tc, te := os.ReadFile(tlpath)
-		if te == nil {
-			tc = toUTF8(tc)
-			tlines = strings.Split(string(tc), "\n")
+			tlpath := b + ".t" + ext
+			tc, te := os.ReadFile(tlpath)
+			if te == nil {
+				tc = toUTF8(tc)
+				tlines = strings.Split(string(tc), "\n")
+			}
+			break
 		}
-		break
+		if found {
+			break
+		}
 	}
 
 	if !found {

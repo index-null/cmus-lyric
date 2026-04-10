@@ -90,6 +90,15 @@ func fetchFromLrcLib(name, artist string, duration int) (string, error) {
 	}
 
 	record, err := lrclibSearch(name, artist)
+	if err == nil {
+		return pickLrcLibLyric(record), nil
+	}
+
+	q := name
+	if len(artist) > 0 {
+		q = name + " " + artist
+	}
+	record, err = lrclibSearchQ(q)
 	if err != nil {
 		return "", err
 	}
@@ -132,6 +141,31 @@ func lrclibSearch(name, artist string) (*lrcLibRecord, error) {
 	} else {
 		params.Set("q", name)
 	}
+
+	body, err := httpGet(lrcLibBaseURL+"/search?"+params.Encode(), userAgent, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var results []lrcLibRecord
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, fmt.Errorf("parse error: %v", err)
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("not found on LRCLIB")
+	}
+
+	for i := range results {
+		if len(results[i].SyncedLyrics) > 0 {
+			return &results[i], nil
+		}
+	}
+	return &results[0], nil
+}
+
+func lrclibSearchQ(q string) (*lrcLibRecord, error) {
+	params := url.Values{}
+	params.Set("q", q)
 
 	body, err := httpGet(lrcLibBaseURL+"/search?"+params.Encode(), userAgent, "")
 	if err != nil {
