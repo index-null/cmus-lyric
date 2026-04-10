@@ -16,6 +16,7 @@ type Model struct {
 	curFile     string
 	curLineIdx  int
 	progress    progress.Model
+	pal         palette
 	width       int
 	height      int
 	showHelp    bool
@@ -36,12 +37,11 @@ type fetchDoneMsg struct {
 }
 
 func NewModel() Model {
-	p := progress.New(
-		progress.WithGradient("#7D56F4", "#00D4AA"),
-		progress.WithoutPercentage(),
-	)
+	pal := generatePalette("cmus-lyric")
+	p := progress.New(pal.progressOpts()...)
 	return Model{
 		progress:   p,
+		pal:        pal,
 		curLineIdx: -1,
 	}
 }
@@ -116,6 +116,14 @@ func (m Model) poll() (Model, tea.Cmd) {
 		m.errMsg = ""
 		m.fetchingMsg = ""
 		m.fetching = false
+
+		seed := track.Artist + " - " + track.Title
+		if seed == " - " {
+			seed = track.File
+		}
+		m.pal = generatePalette(seed)
+		m.progress = progress.New(m.pal.progressOpts()...)
+		m.progress.Width = max(m.width-6, 0)
 
 		lyrics := lyric.Load(track.File, track.Title)
 		if lyrics == nil {

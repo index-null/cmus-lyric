@@ -8,16 +8,6 @@ import (
 )
 
 var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#FAFAFA")).
-			Background(lipgloss.Color("#7D56F4")).
-			Padding(0, 1)
-
-	artistStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#AD8EE6")).
-			Padding(0, 1)
-
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF5555")).
 			Bold(true)
@@ -28,13 +18,6 @@ var (
 	footerStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#666666"))
 
-	helpKeyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#7D56F4")).
-			Bold(true)
-
-	helpDescStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#AAAAAA"))
-
 	noLyricStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF5555")).
 			Italic(true)
@@ -42,9 +25,6 @@ var (
 	statusPausedStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#F1FA8C")).
 				Bold(true)
-
-	gradientStart, _ = colorful.Hex("#7D56F4")
-	gradientEnd, _   = colorful.Hex("#00D4AA")
 )
 
 func gradientText(text string, from, to colorful.Color, bold bool) string {
@@ -60,8 +40,7 @@ func gradientText(text string, from, to colorful.Color, bold bool) string {
 			t = float64(i) / float64(n-1)
 		}
 		c := from.BlendLab(to, t)
-		hex := c.Hex()
-		s := lipgloss.NewStyle().Foreground(lipgloss.Color(hex))
+		s := lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex()))
 		if bold {
 			s = s.Bold(true)
 		}
@@ -81,7 +60,23 @@ func fadedColor(distance, maxDist int, bright, dim colorful.Color) colorful.Colo
 	return bright.BlendLab(dim, t)
 }
 
-func lyricStyle(distance, maxDist int, bright, dim colorful.Color) lipgloss.Style {
+func lyricFadedStyle(distance, maxDist int, bright, dim colorful.Color) lipgloss.Style {
 	c := fadedColor(distance, maxDist, bright, dim)
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex()))
+}
+
+func gradientDivider(w int, from, to colorful.Color) string {
+	if w <= 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i := range w {
+		t := 0.0
+		if w > 1 {
+			t = float64(i) / float64(w-1)
+		}
+		c := from.BlendLab(to, t)
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex())).Render("─"))
+	}
+	return sb.String()
 }
