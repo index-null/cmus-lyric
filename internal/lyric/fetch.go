@@ -1,6 +1,7 @@
 package lyric
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,13 +10,18 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
-	lrcLibBaseURL    = "https://lrclib.net/api"
+	lrcLibBaseURL = "https://lrclib.net/api"
+	userAgent     = "cmus-lyric v2.0.0 (https://github.com/index-null/cmus-lyric)"
+	httpTimeout   = 10 * time.Second
+)
+
+var (
 	neteaseSearchAPI = "https://music.163.com/api/search/get/web"
 	neteaseLyricAPI  = "https://music.163.com/api/song/lyric"
-	userAgent        = "cmus-lyric v2.0.0 (https://github.com/index-null/cmus-lyric)"
 )
 
 type lrcLibRecord struct {
@@ -51,9 +57,9 @@ type neteaseLyricResult struct {
 }
 
 func Fetch(dir, name, artist string, duration int) error {
-	content, err := fetchFromLrcLib(name, artist, duration)
+	content, tlyric, err := fetchFromLrcLib(name, artist, duration)
 	if err != nil {
-		content, err = fetchFromNetease(name, artist, duration)
+		content, tlyric, err = fetchFromNetease(name, artist, duration)
 		if err != nil {
 			return err
 		}
@@ -64,34 +70,67 @@ func Fetch(dir, name, artist string, duration int) error {
 	}
 
 	path := dir + "/" + name + ".lrc"
-	return save(path, strings.NewReader(content))
+	if err := save(path, strings.NewReader(content)); err != nil {
+		return err
+	}
+
+	if len(tlyric) > 0 {
+		tpath := dir + "/" + name + ".t.lrc"
+		_ = save(tpath, strings.NewReader(tlyric))
+	}
+
+	return nil
 }
 
 func FetchForCmus(file string, dt int, artist, title string) error {
+	_, _, err := FetchContent(file, dt, artist, title)
+	return err
+}
+
+func FetchContent(file string, dt int, artist, title string) (string, string, error) {
 	pathIdx := strings.LastIndexAny(file, ".")
 	titleIdx := strings.LastIndexAny(file, "/")
 	dir := file[:titleIdx]
 
-	if len(title) == 0 {
-		title = file[titleIdx+1 : pathIdx]
+	name := title
+	if len(name) == 0 {
+		name = file[titleIdx+1 : pathIdx]
 	}
 
-	return Fetch(dir, title, artist, dt)
+	content, tlyric, err := fetchFromLrcLib(name, artist, dt)
+	if err != nil {
+		content, tlyric, err = fetchFromNetease(name, artist, dt)
+		if err != nil {
+			return "", "", err
+		}
+	}
+
+	if len(content) == 0 {
+		return "", "", fmt.Errorf("lyric content is empty")
+	}
+
+	path := dir + "/" + name + ".lrc"
+	if saveErr := save(path, strings.NewReader(content)); saveErr != nil {
+		_ = SaveToCache(artist, name, content, tlyric)
+	} else if len(tlyric) > 0 {
+		tpath := dir + "/" + name + ".t.lrc"
+		_ = save(tpath, strings.NewReader(tlyric))
+	}
+
+	return content, tlyric, nil
 }
 
-// --- LRCLIB ---
-
-func fetchFromLrcLib(name, artist string, duration int) (string, error) {
+func fetchFromLrcLib(name, artist string, duration int) (string, string, error) {
 	if len(artist) > 0 && duration > 0 {
 		record, err := lrclibGet(name, artist, duration)
 		if err == nil {
-			return pickLrcLibLyric(record), nil
+			return pickLrcLibLyric(record), "", nil
 		}
 	}
 
 	record, err := lrclibSearch(name, artist)
 	if err == nil {
-		return pickLrcLibLyric(record), nil
+		return pickLrcLibLyric(record), "", nil
 	}
 
 	q := name
@@ -100,9 +139,9 @@ func fetchFromLrcLib(name, artist string, duration int) (string, error) {
 	}
 	record, err = lrclibSearchQ(q)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return pickLrcLibLyric(record), nil
+	return pickLrcLibLyric(record), "", nil
 }
 
 func pickLrcLibLyric(r *lrcLibRecord) string {
@@ -125,7 +164,7 @@ func lrclibGet(name, artist string, duration int) (*lrcLibRecord, error) {
 
 	record := &lrcLibRecord{}
 	if err := json.Unmarshal(body, record); err != nil {
-		return nil, fmt.Errorf("parse error: %v", err)
+		return nil, fmt.Errorf("parse error: %w", err)
 	}
 	if record.ID == 0 {
 		return nil, fmt.Errorf("track not found")
@@ -149,7 +188,7 @@ func lrclibSearch(name, artist string) (*lrcLibRecord, error) {
 
 	var results []lrcLibRecord
 	if err := json.Unmarshal(body, &results); err != nil {
-		return nil, fmt.Errorf("parse error: %v", err)
+		return nil, fmt.Errorf("parse error: %w", err)
 	}
 	if len(results) == 0 {
 		return nil, fmt.Errorf("not found on LRCLIB")
@@ -174,7 +213,7 @@ func lrclibSearchQ(q string) (*lrcLibRecord, error) {
 
 	var results []lrcLibRecord
 	if err := json.Unmarshal(body, &results); err != nil {
-		return nil, fmt.Errorf("parse error: %v", err)
+		return nil, fmt.Errorf("parse error: %w", err)
 	}
 	if len(results) == 0 {
 		return nil, fmt.Errorf("not found on LRCLIB")
@@ -188,9 +227,7 @@ func lrclibSearchQ(q string) (*lrcLibRecord, error) {
 	return &results[0], nil
 }
 
-// --- Netease ---
-
-func fetchFromNetease(name, artist string, duration int) (string, error) {
+func fetchFromNetease(name, artist string, duration int) (string, string, error) {
 	query := name
 	if len(artist) > 0 {
 		query = name + " " + artist
@@ -205,15 +242,15 @@ func fetchFromNetease(name, artist string, duration int) (string, error) {
 
 	body, err := httpGet(neteaseSearchAPI+"?"+params.Encode(), "Mozilla/5.0", "https://music.163.com")
 	if err != nil {
-		return "", fmt.Errorf("netease search error: %v", err)
+		return "", "", fmt.Errorf("netease search: %w", err)
 	}
 
 	var sr neteaseSongResult
 	if err := json.Unmarshal(body, &sr); err != nil {
-		return "", fmt.Errorf("netease parse error: %v", err)
+		return "", "", fmt.Errorf("netease parse: %w", err)
 	}
 	if sr.Code != 200 || len(sr.Result.Songs) == 0 {
-		return "", fmt.Errorf("not found on Netease")
+		return "", "", fmt.Errorf("not found on Netease")
 	}
 
 	songID := 0
@@ -230,7 +267,7 @@ func fetchFromNetease(name, artist string, duration int) (string, error) {
 	return neteaseGetLyric(songID)
 }
 
-func neteaseGetLyric(id int) (string, error) {
+func neteaseGetLyric(id int) (string, string, error) {
 	params := url.Values{}
 	params.Set("id", strconv.Itoa(id))
 	params.Set("lv", "-1")
@@ -238,24 +275,25 @@ func neteaseGetLyric(id int) (string, error) {
 
 	body, err := httpGet(neteaseLyricAPI+"?"+params.Encode(), "Mozilla/5.0", "https://music.163.com")
 	if err != nil {
-		return "", fmt.Errorf("netease lyric error: %v", err)
+		return "", "", fmt.Errorf("netease lyric: %w", err)
 	}
 
 	var lr neteaseLyricResult
 	if err := json.Unmarshal(body, &lr); err != nil {
-		return "", fmt.Errorf("netease lyric parse error: %v", err)
+		return "", "", fmt.Errorf("netease lyric parse: %w", err)
 	}
 	if lr.Code != 200 {
-		return "", fmt.Errorf("netease lyric API error: code=%d", lr.Code)
+		return "", "", fmt.Errorf("netease lyric API error: code=%d", lr.Code)
 	}
 
-	return lr.Lrc.Lyric, nil
+	return lr.Lrc.Lyric, lr.Tlyric.Lyric, nil
 }
 
-// --- HTTP / IO ---
-
 func httpGet(reqURL, ua, referer string) ([]byte, error) {
-	req, err := http.NewRequest("GET", reqURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), httpTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -286,15 +324,19 @@ func httpGet(reqURL, ua, referer string) ([]byte, error) {
 	return body, nil
 }
 
+func Save(path, content string) error {
+	return save(path, strings.NewReader(content))
+}
+
 func save(path string, src io.Reader) error {
 	out, err := os.Create(path)
 	if err != nil {
-		return fmt.Errorf("write error: %v", err)
+		return fmt.Errorf("write error: %w", err)
 	}
 	defer out.Close()
 
 	if _, err = io.Copy(out, src); err != nil {
-		return fmt.Errorf("write error: %v", err)
+		return fmt.Errorf("write error: %w", err)
 	}
 	return nil
 }
