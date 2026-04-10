@@ -37,7 +37,7 @@ type fetchDoneMsg struct {
 
 func NewModel() Model {
 	p := progress.New(
-		progress.WithDefaultGradient(),
+		progress.WithGradient("#7D56F4", "#00D4AA"),
 		progress.WithoutPercentage(),
 	)
 	return Model{
@@ -66,7 +66,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.progress.Width = msg.Width - 4
+		m.progress.Width = max(msg.Width-6, 0)
 		return m, nil
 
 	case tickMsg:

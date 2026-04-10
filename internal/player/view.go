@@ -17,16 +17,23 @@ func (m Model) View() string {
 		return m.renderHelp()
 	}
 
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#7D56F4")).
+		Width(m.width - 2).
+		Height(m.height - 2)
+
 	sections := make([]string, 0, 3)
 	sections = append(sections, m.renderHeader())
 	sections = append(sections, m.renderLyrics())
 	sections = append(sections, m.renderFooter())
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return borderStyle.Render(content)
 }
 
 func (m Model) renderHeader() string {
-	w := m.width
+	w := m.innerWidth()
 
 	var title, artist, album string
 	if m.track.Title != "" {
@@ -41,7 +48,18 @@ func (m Model) renderHeader() string {
 	artist = m.track.Artist
 	album = m.track.Album
 
-	titleText := titleStyle.Render(title)
+	var statusIcon string
+	switch m.track.Status {
+	case "playing":
+		statusIcon = lipgloss.NewStyle().Foreground(lipgloss.Color("#00D4AA")).Bold(true).Render(">>")
+	case "paused":
+		statusIcon = lipgloss.NewStyle().Foreground(lipgloss.Color("#F1FA8C")).Bold(true).Render("||")
+	default:
+		statusIcon = lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).Render("--")
+	}
+
+	titleLine := statusIcon + " " + titleStyle.Render(title)
+
 	info := ""
 	if artist != "" {
 		info += artist
@@ -52,21 +70,19 @@ func (m Model) renderHeader() string {
 		}
 		info += album
 	}
-	infoText := artistStyle.Render(info)
+	infoLine := "   " + artistStyle.Render(info)
 
-	header := lipgloss.JoinHorizontal(lipgloss.Center, titleText, " ", infoText)
+	divider := renderGradientDivider(w)
 
-	divider := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#444444")).
-		Render(strings.Repeat("─", w))
-
-	return lipgloss.JoinVertical(lipgloss.Left, header, divider)
+	return lipgloss.JoinVertical(lipgloss.Left, titleLine, infoLine, divider)
 }
 
 func (m Model) renderLyrics() string {
-	headerH := 2
+	headerH := 3
 	footerH := 3
-	availH := max(m.height-headerH-footerH, 1)
+	borderH := 2
+	availH := max(m.height-headerH-footerH-borderH, 1)
+	w := m.innerWidth()
 
 	centerMsg := func(msg string) string {
 		pad := max(availH/2-1, 0)
@@ -74,7 +90,8 @@ func (m Model) renderLyrics() string {
 		for range pad {
 			lines = append(lines, "")
 		}
-		lines = append(lines, msg)
+		centered := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(msg)
+		lines = append(lines, centered)
 		for len(lines) < availH {
 			lines = append(lines, "")
 		}
@@ -82,16 +99,16 @@ func (m Model) renderLyrics() string {
 	}
 
 	if m.track.Status != "playing" {
-		return centerMsg(statusPausedStyle.Render("  paused / stopped"))
+		return centerMsg(statusPausedStyle.Render("paused / stopped"))
 	}
 	if m.errMsg != "" {
-		return centerMsg(errorStyle.Render("  " + m.errMsg))
+		return centerMsg(errorStyle.Render(m.errMsg))
 	}
 	if m.fetchingMsg != "" {
-		return centerMsg(fetchStyle.Render("  " + m.fetchingMsg))
+		return centerMsg(fetchStyle.Render(m.fetchingMsg))
 	}
 	if len(m.lyrics) == 0 {
-		return centerMsg(noLyricStyle.Render("  no lyrics"))
+		return centerMsg(noLyricStyle.Render("no lyrics"))
 	}
 
 	type renderedLine struct {
@@ -107,6 +124,7 @@ func (m Model) renderLyrics() string {
 	transDim, _ := colorful.Hex("#444444")
 
 	const fadeRadius = 8
+	align := lipgloss.NewStyle().Width(w).Align(lipgloss.Center)
 
 	var rendered []renderedLine
 	for i, l := range m.lyrics {
@@ -118,25 +136,25 @@ func (m Model) renderLyrics() string {
 		var styledMain, styledTrans string
 		switch {
 		case i == m.curLineIdx:
-			styledMain = "  " + gradientText("> "+txt, gradientStart, gradientEnd, true)
+			styledMain = align.Render(gradientText("♪ "+txt, gradientStart, gradientEnd, true))
 			if l.Trans != "" {
-				styledTrans = "    " + gradientText(l.Trans, transBright, gradientEnd, false)
+				styledTrans = align.Render(gradientText(l.Trans, transBright, gradientEnd, false))
 			}
 		case i < m.curLineIdx:
 			dist := m.curLineIdx - i
 			s := lyricStyle(dist, fadeRadius, passedBright, passedDim)
-			styledMain = s.Render("  " + txt)
+			styledMain = align.Render(s.Render(txt))
 			if l.Trans != "" {
 				ts := lyricStyle(dist, fadeRadius, transBright, transDim)
-				styledTrans = ts.Render("  " + l.Trans)
+				styledTrans = align.Render(ts.Render(l.Trans))
 			}
 		default:
 			dist := i - m.curLineIdx
 			s := lyricStyle(dist, fadeRadius, upcomingBright, upcomingDim)
-			styledMain = s.Render("  " + txt)
+			styledMain = align.Render(s.Render(txt))
 			if l.Trans != "" {
 				ts := lyricStyle(dist, fadeRadius, transBright, transDim)
-				styledTrans = ts.Render("  " + l.Trans)
+				styledTrans = align.Render(ts.Render(l.Trans))
 			}
 		}
 
@@ -172,11 +190,9 @@ func (m Model) renderLyrics() string {
 }
 
 func (m Model) renderFooter() string {
-	w := m.width
+	w := m.innerWidth()
 
-	divider := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#444444")).
-		Render(strings.Repeat("─", w))
+	divider := renderGradientDivider(w)
 
 	var pct float64
 	if m.track.Duration > 0 {
@@ -197,12 +213,16 @@ func (m Model) renderFooter() string {
 }
 
 func (m Model) renderHelp() string {
-	w := m.width
+	w := m.innerWidth()
+
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#7D56F4")).
+		Width(m.width - 2).
+		Height(m.height - 2)
 
 	title := titleStyle.Render("Help")
-	divider := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#444444")).
-		Render(strings.Repeat("─", w))
+	divider := renderGradientDivider(w)
 
 	keys := []struct{ key, desc string }{
 		{"q / Ctrl+C", "quit"},
@@ -221,5 +241,26 @@ func (m Model) renderHelp() string {
 	all = append(all, "", divider)
 	all = append(all, footerStyle.Render("  press ? to go back"))
 
-	return lipgloss.JoinVertical(lipgloss.Left, all...)
+	content := lipgloss.JoinVertical(lipgloss.Left, all...)
+	return borderStyle.Render(content)
+}
+
+func (m Model) innerWidth() int {
+	return max(m.width-4, 0)
+}
+
+func renderGradientDivider(w int) string {
+	if w <= 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i := range w {
+		t := 0.0
+		if w > 1 {
+			t = float64(i) / float64(w-1)
+		}
+		c := gradientStart.BlendLab(gradientEnd, t)
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex())).Render("─"))
+	}
+	return sb.String()
 }
