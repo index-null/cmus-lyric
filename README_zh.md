@@ -26,13 +26,16 @@
 
 ## 简介
 
-`cmus-lyric` 通过 `cmus-remote -Q` 连接正在运行的 cmus 实例，读取当前播放曲目，并在终端中实时显示时间同步歌词。若本地没有 `.lrc` 文件，会自动从 [LRCLIB](https://lrclib.net) 或网易云音乐获取。
+`cmus-lyric` 通过 Unix socket（自动回退到 `cmus-remote`）连接正在运行的 cmus 实例，读取当前播放曲目，并在终端中实时显示时间同步歌词。歌词来源包括音频内嵌标签、本地 `.lrc` 文件、磁盘缓存和在线 API，所有网络获取均异步执行，不阻塞 UI。
 
 **功能特性：**
 
 - 实时歌词滚动高亮
-- 自动从 LRCLIB 和网易云音乐获取歌词
-- 翻译歌词支持（`.tlrc` / `.tlyric` 对照显示）
+- 自动从 LRCLIB 和网易云音乐获取歌词（非阻塞）
+- 翻译歌词支持（`.t.lrc` / `.t.lyric` 对照显示）
+- 从音频文件提取内嵌歌词（ID3/Vorbis Comment）
+- 歌词缓存系统（`~/.cache/cmus-lyric/`），支持离线和只读目录
+- Unix socket IPC，低开销 cmus 通信
 - GBK/UTF-8 编码自动检测
 - 进度条与播放状态
 - 简洁无干扰的界面
@@ -99,9 +102,11 @@ lyrics
 
 ### 歌词解析逻辑
 
-1. 在音频文件同目录下查找 `<文件名>.lrc` 或 `<文件名>.lyric`
-2. 若存在 `.tlrc` / `.tlyric` 文件，翻译歌词会显示在每行下方
-3. 若本地无歌词文件，依次从 LRCLIB、网易云音乐获取，并保存为 `.lrc`
+1. 从音频文件提取内嵌歌词（ID3 USLT / Vorbis Comment）
+2. 在音频文件同目录下查找 `<文件名>.lrc` 或 `<文件名>.lyric`
+3. 若存在 `.t.lrc` / `.t.lyric` 文件，翻译歌词会显示在每行下方
+4. 查找本地缓存（`~/.cache/cmus-lyric/`）
+5. 若均未找到，依次从 LRCLIB、网易云音乐获取，保存为 `.lrc` 并缓存
 
 ## 项目结构
 
@@ -109,11 +114,13 @@ lyrics
 cmus-lyric/
 ├── cmd/lyrics/           # 应用入口
 ├── internal/
-│   ├── player/           # Bubble Tea 模型、cmus IPC、歌词渲染
-│   └── lyric/            # 歌词获取（LRCLIB、网易云）
+│   ├── cmus/             # cmus IPC（Unix socket + exec 回退）
+│   ├── lyric/            # 歌词加载、解析、获取、缓存
+│   └── player/           # Bubble Tea 模型、视图、样式
 ├── .github/workflows/    # CI/CD（tag 触发自动发布）
 ├── Taskfile.yml          # 构建任务
-├── .golangci.yml         # Linter 配置
+├── .golangci.yml         # Linter 配置（v2）
+├── lefthook.yml          # Git hooks（fmt + lint + build + test）
 ├── .goreleaser.yaml      # 发布配置
 ├── install.sh            # 一键安装脚本
 └── go.mod

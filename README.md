@@ -26,13 +26,16 @@ A terminal-based synced lyrics viewer for [cmus](https://cmus.github.io/), built
 
 ## Overview
 
-`cmus-lyric` connects to your running cmus instance via `cmus-remote -Q`, reads the current track, and displays time-synced lyrics in a beautiful TUI. If no local `.lrc` file is found, it automatically fetches lyrics from [LRCLIB](https://lrclib.net) or Netease Music.
+`cmus-lyric` connects to your running cmus instance via Unix socket (with `cmus-remote` fallback), reads the current track, and displays time-synced lyrics in a beautiful TUI. It resolves lyrics from multiple sources — embedded audio tags, local `.lrc` files, a disk cache, and online APIs — all fetched asynchronously without blocking the UI.
 
 **Features:**
 
 - Real-time synced lyric scrolling with highlight
-- Auto-fetch from LRCLIB and Netease Music
-- Translation lyrics support (`.tlrc` / `.tlyric` side-by-side)
+- Auto-fetch from LRCLIB and Netease Music (non-blocking)
+- Translation lyrics support (`.t.lrc` / `.t.lyric` side-by-side)
+- Embedded lyrics extraction from audio files (ID3/Vorbis Comment)
+- Lyrics caching (`~/.cache/cmus-lyric/`) for offline and read-only directories
+- Unix socket IPC for low-overhead cmus communication
 - GBK/UTF-8 auto-detection
 - Progress bar and playback status
 - Minimal, distraction-free UI
@@ -99,9 +102,11 @@ lyrics
 
 ### How lyrics are resolved
 
-1. Look for `<filename>.lrc` or `<filename>.lyric` next to the audio file
-2. If a `.tlrc` / `.tlyric` file exists alongside, translation lines are shown below each lyric line
-3. If no local file is found, fetch from LRCLIB (preferred) then Netease Music, and save as `.lrc`
+1. Extract embedded lyrics from the audio file (ID3 USLT / Vorbis Comment)
+2. Look for `<filename>.lrc` or `<filename>.lyric` next to the audio file
+3. If a `.t.lrc` / `.t.lyric` file exists alongside, translation lines are shown below each lyric line
+4. Check the local cache (`~/.cache/cmus-lyric/`)
+5. If nothing is found, fetch from LRCLIB (preferred) then Netease Music, save as `.lrc` and cache
 
 ## Project Structure
 
@@ -109,11 +114,13 @@ lyrics
 cmus-lyric/
 ├── cmd/lyrics/           # Application entry point
 ├── internal/
-│   ├── player/           # Bubble Tea model, cmus IPC, lyric rendering
-│   └── lyric/            # Lyric fetching (LRCLIB, Netease)
+│   ├── cmus/             # cmus IPC (Unix socket + exec fallback)
+│   ├── lyric/            # Lyric loading, parsing, fetching, caching
+│   └── player/           # Bubble Tea model, view, styles
 ├── .github/workflows/    # CI/CD (auto-release on tag)
 ├── Taskfile.yml          # Build tasks
-├── .golangci.yml         # Linter config
+├── .golangci.yml         # Linter config (v2)
+├── lefthook.yml          # Git hooks (fmt + lint + build + test)
 ├── .goreleaser.yaml      # Release config
 ├── install.sh            # One-line install script
 └── go.mod

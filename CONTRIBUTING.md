@@ -78,10 +78,11 @@ refactor: extract LRC parser into separate package
 
 ## Code Style
 
-- Run `gofmt` (enforced by lefthook pre-commit hook)
+- Formatting is enforced by `golangci-lint fmt` via lefthook pre-commit hook
 - Follow [Effective Go](https://go.dev/doc/effective_go) guidelines
 - Keep functions small and well-named
 - Avoid unnecessary comments — clear code is better than commented code
+- Wrap errors with `%w` for proper error chains
 
 ## Project Structure
 
@@ -89,8 +90,9 @@ refactor: extract LRC parser into separate package
 cmus-lyric/
 ├── cmd/lyrics/       # Entry point
 ├── internal/
-│   ├── player/       # TUI model, cmus IPC, rendering
-│   └── lyric/        # Lyric fetching (LRCLIB, Netease)
+│   ├── cmus/         # cmus IPC (Unix socket + exec fallback)
+│   ├── lyric/        # Lyric loading, parsing, fetching, caching
+│   └── player/       # TUI model, view, styles
 ├── Taskfile.yml      # Build tasks
 └── go.mod
 ```
@@ -98,9 +100,10 @@ cmus-lyric/
 ## Adding a New Lyrics Source
 
 1. Create a new file in `internal/lyric/` (e.g. `kugou.go`)
-2. Implement the fetching logic following existing patterns in the package
-3. Integrate the new source into the fallback chain
-4. Add tests
+2. Implement the fetching logic following existing patterns — return `(lyric, tlyric, error)`
+3. Integrate the new source into the fallback chain in `fetchFromLrcLib` / `FetchContent`
+4. Add unit tests with `httptest.NewServer` mocks (see `fetch_test.go` for examples)
+5. Run `task check` to ensure all lints and tests pass
 
 ## Reporting Issues
 
