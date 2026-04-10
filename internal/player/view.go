@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lucasb-eyer/go-colorful"
 )
 
 func (m Model) View() string {
@@ -98,6 +99,15 @@ func (m Model) renderLyrics() string {
 		text string
 	}
 
+	passedBright, _ := colorful.Hex("#888888")
+	passedDim, _ := colorful.Hex("#333333")
+	upcomingBright, _ := colorful.Hex("#CCCCCC")
+	upcomingDim, _ := colorful.Hex("#444444")
+	transBright, _ := colorful.Hex("#AD8EE6")
+	transDim, _ := colorful.Hex("#444444")
+
+	const fadeRadius = 8
+
 	var rendered []renderedLine
 	for i, l := range m.lyrics {
 		txt := l.Text
@@ -107,20 +117,26 @@ func (m Model) renderLyrics() string {
 
 		var styledMain, styledTrans string
 		switch {
-		case i < m.curLineIdx:
-			styledMain = passedStyle.Render("  " + txt)
-			if l.Trans != "" {
-				styledTrans = passedTransStyle.Render("  " + l.Trans)
-			}
 		case i == m.curLineIdx:
-			styledMain = currentStyle.Render("  > " + txt)
+			styledMain = "  " + gradientText("> "+txt, gradientStart, gradientEnd, true)
 			if l.Trans != "" {
-				styledTrans = currentTransStyle.Render("    " + l.Trans)
+				styledTrans = "    " + gradientText(l.Trans, transBright, gradientEnd, false)
+			}
+		case i < m.curLineIdx:
+			dist := m.curLineIdx - i
+			s := lyricStyle(dist, fadeRadius, passedBright, passedDim)
+			styledMain = s.Render("  " + txt)
+			if l.Trans != "" {
+				ts := lyricStyle(dist, fadeRadius, transBright, transDim)
+				styledTrans = ts.Render("  " + l.Trans)
 			}
 		default:
-			styledMain = upcomingStyle.Render("  " + txt)
+			dist := i - m.curLineIdx
+			s := lyricStyle(dist, fadeRadius, upcomingBright, upcomingDim)
+			styledMain = s.Render("  " + txt)
 			if l.Trans != "" {
-				styledTrans = upcomingTransStyle.Render("  " + l.Trans)
+				ts := lyricStyle(dist, fadeRadius, transBright, transDim)
+				styledTrans = ts.Render("  " + l.Trans)
 			}
 		}
 
