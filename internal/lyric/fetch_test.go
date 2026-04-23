@@ -195,12 +195,18 @@ func TestFetchFromNetease_ReturnsTlyric(t *testing.T) {
 						ID       int    `json:"id"`
 						Name     string `json:"name"`
 						Duration int    `json:"duration"`
+						Album    struct {
+							PicURL string `json:"picUrl"`
+						} `json:"album"`
 					} `json:"songs"`
 				}{
 					Songs: []struct {
 						ID       int    `json:"id"`
 						Name     string `json:"name"`
 						Duration int    `json:"duration"`
+						Album    struct {
+							PicURL string `json:"picUrl"`
+						} `json:"album"`
 					}{{ID: 123, Name: "Test", Duration: 240000}},
 				},
 				Code: 200,

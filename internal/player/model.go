@@ -154,7 +154,7 @@ func (m Model) poll() (Model, tea.Cmd) {
 	}
 
 	if m.lyrics != nil {
-		posCS := track.Position * 100
+		posCS := track.Position*100 + 180
 		m.curLineIdx = lyric.FindCurrentLine(m.lyrics, posCS)
 	}
 

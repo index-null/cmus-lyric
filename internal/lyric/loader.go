@@ -171,6 +171,25 @@ func FindCurrentLine(lyrics []Line, posCS int) int {
 	return idx
 }
 
+func LoadEmbeddedCover(path string) []byte {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	m, err := tag.ReadFrom(f)
+	if err != nil {
+		return nil
+	}
+
+	pic := m.Picture()
+	if pic == nil || len(pic.Data) == 0 {
+		return nil
+	}
+	return pic.Data
+}
+
 func loadEmbedded(path string) []Line {
 	f, err := os.Open(path)
 	if err != nil {
