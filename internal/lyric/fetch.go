@@ -22,6 +22,7 @@ const (
 var (
 	neteaseSearchAPI = "https://music.163.com/api/search/get/web"
 	neteaseLyricAPI  = "https://music.163.com/api/song/lyric"
+	neteaseDetailAPI = "https://music.163.com/api/song/detail"
 )
 
 type lrcLibRecord struct {
@@ -41,6 +42,9 @@ type neteaseSongResult struct {
 			ID       int    `json:"id"`
 			Name     string `json:"name"`
 			Duration int    `json:"duration"`
+			Album    struct {
+				PicURL string `json:"picUrl"`
+			} `json:"album"`
 		} `json:"songs"`
 	} `json:"result"`
 	Code int `json:"code"`
@@ -228,6 +232,14 @@ func lrclibSearchQ(q string) (*lrcLibRecord, error) {
 }
 
 func fetchFromNetease(name, artist string, duration int) (string, string, error) {
+	sr, err := neteaseSearch(name, artist)
+	if err != nil {
+		return "", "", err
+	}
+	return neteaseGetLyric(sr.Result.Songs[neteaseMatchSong(sr, duration)].ID)
+}
+
+func neteaseSearch(name, artist string) (*neteaseSongResult, error) {
 	query := name
 	if len(artist) > 0 {
 		query = name + " " + artist
@@ -242,29 +254,26 @@ func fetchFromNetease(name, artist string, duration int) (string, string, error)
 
 	body, err := httpGet(neteaseSearchAPI+"?"+params.Encode(), "Mozilla/5.0", "https://music.163.com")
 	if err != nil {
-		return "", "", fmt.Errorf("netease search: %w", err)
+		return nil, fmt.Errorf("netease search: %w", err)
 	}
 
 	var sr neteaseSongResult
 	if err := json.Unmarshal(body, &sr); err != nil {
-		return "", "", fmt.Errorf("netease parse: %w", err)
+		return nil, fmt.Errorf("netease parse: %w", err)
 	}
 	if sr.Code != 200 || len(sr.Result.Songs) == 0 {
-		return "", "", fmt.Errorf("not found on Netease")
+		return nil, fmt.Errorf("not found on Netease")
 	}
+	return &sr, nil
+}
 
-	songID := 0
-	for _, s := range sr.Result.Songs {
+func neteaseMatchSong(sr *neteaseSongResult, duration int) int {
+	for i, s := range sr.Result.Songs {
 		if duration > 0 && s.Duration/1000 == duration {
-			songID = s.ID
-			break
+			return i
 		}
 	}
-	if songID == 0 {
-		songID = sr.Result.Songs[0].ID
-	}
-
-	return neteaseGetLyric(songID)
+	return 0
 }
 
 func neteaseGetLyric(id int) (string, string, error) {
@@ -322,6 +331,52 @@ func httpGet(reqURL, ua, referer string) ([]byte, error) {
 	}
 
 	return body, nil
+}
+
+type neteaseDetailResult struct {
+	Songs []struct {
+		Album struct {
+			PicURL string `json:"picUrl"`
+		} `json:"album"`
+	} `json:"songs"`
+	Code int `json:"code"`
+}
+
+func FetchCoverURL(name, artist string, duration int) (string, error) {
+	sr, err := neteaseSearch(name, artist)
+	if err != nil {
+		return "", err
+	}
+
+	idx := neteaseMatchSong(sr, duration)
+	if picURL := sr.Result.Songs[idx].Album.PicURL; picURL != "" {
+		return picURL, nil
+	}
+	return neteaseGetCoverByDetail(sr.Result.Songs[idx].ID)
+}
+
+func neteaseGetCoverByDetail(id int) (string, error) {
+	params := url.Values{}
+	params.Set("id", strconv.Itoa(id))
+	params.Set("ids", fmt.Sprintf("[%d]", id))
+
+	body, err := httpGet(neteaseDetailAPI+"?"+params.Encode(), "Mozilla/5.0", "https://music.163.com")
+	if err != nil {
+		return "", fmt.Errorf("netease detail: %w", err)
+	}
+
+	var dr neteaseDetailResult
+	if err := json.Unmarshal(body, &dr); err != nil {
+		return "", fmt.Errorf("netease detail parse: %w", err)
+	}
+	if dr.Code != 200 || len(dr.Songs) == 0 || dr.Songs[0].Album.PicURL == "" {
+		return "", fmt.Errorf("netease detail: no cover")
+	}
+	return dr.Songs[0].Album.PicURL, nil
+}
+
+func FetchCoverData(coverURL string) ([]byte, error) {
+	return httpGet(coverURL, "Mozilla/5.0", "https://music.163.com")
 }
 
 func Save(path, content string) error {

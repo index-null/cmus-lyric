@@ -71,6 +71,26 @@ func SaveToCache(artist, title, lrc, tlyric string) error {
 	return nil
 }
 
+func CacheCoverPath(artist, title string) string {
+	return filepath.Join(CacheDir(), CacheKey(artist, title)+".cover")
+}
+
+func LoadCoverFromCache(artist, title string) []byte {
+	data, err := os.ReadFile(CacheCoverPath(artist, title))
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+func SaveCoverToCache(artist, title string, data []byte) error {
+	dir := CacheDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(CacheCoverPath(artist, title), data, 0644)
+}
+
 func splitLines(data []byte) []string {
 	return splitLinesStr(string(data))
 }
