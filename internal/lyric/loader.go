@@ -101,6 +101,10 @@ func BuildLines(lines, tlines []string) []Line {
 		return entries[i].timeCS < entries[j].timeCS
 	})
 
+	if len(entries) == 0 {
+		return nil
+	}
+
 	result := make([]Line, 0, len(entries))
 	for _, e := range entries {
 		result = append(result, Line{
