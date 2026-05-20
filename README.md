@@ -34,10 +34,13 @@ A terminal-based synced lyrics viewer for [cmus](https://cmus.github.io/), built
 - Auto-fetch from LRCLIB and Netease Music (non-blocking)
 - Translation lyrics support (`.t.lrc` / `.t.lyric` side-by-side)
 - Embedded lyrics extraction from audio files (ID3/Vorbis Comment)
-- Lyrics caching (`~/.cache/cmus-lyric/`) for offline and read-only directories
+- Album cover display (`lyrics cover`)
+- Lyrics caching (location determined by `os.UserCacheDir()`, e.g. `~/Library/Caches/cmus-lyric/` on macOS, `~/.cache/cmus-lyric/` on Linux) for offline and read-only directories
+- Duration tolerance (±2s) for better lyric matching
 - Unix socket IPC for low-overhead cmus communication
 - GBK/UTF-8 auto-detection
 - Progress bar and playback status
+- Debug mode (`d` key) to inspect track metadata and lyric sources
 - Minimal, distraction-free UI
 
 ## Install
@@ -95,18 +98,33 @@ Start cmus and play a song, then in another terminal:
 lyrics
 ```
 
-| Key          | Action      |
-| ------------ | ----------- |
-| `q` `Ctrl+C` | Quit        |
-| `?`          | Toggle help |
+| Key          | Action         |
+| ------------ | -------------- |
+| `q` `Ctrl+C` | Quit           |
+| `?`          | Toggle help    |
+| `d`          | Toggle debug   |
 
 ### How lyrics are resolved
 
 1. Extract embedded lyrics from the audio file (ID3 USLT / Vorbis Comment)
 2. Look for `<filename>.lrc` or `<filename>.lyric` next to the audio file
 3. If a `.t.lrc` / `.t.lyric` file exists alongside, translation lines are shown below each lyric line
-4. Check the local cache (`~/.cache/cmus-lyric/`)
+4. Check the local cache (location determined by `os.UserCacheDir()`, e.g. `~/Library/Caches/cmus-lyric/` on macOS, `~/.cache/cmus-lyric/` on Linux)
 5. If nothing is found, fetch from LRCLIB (preferred) then Netease Music, save as `.lrc` and cache
+   - **Duration tolerance**: ±2 seconds when matching tracks by duration
+
+### Album cover
+
+Display the album cover of the current track:
+
+```bash
+lyrics cover
+```
+
+Cover is fetched from:
+1. Embedded album art in audio file
+2. Local cache (location determined by `os.UserCacheDir()`, e.g. `~/Library/Caches/cmus-lyric/` on macOS, `~/.cache/cmus-lyric/` on Linux)
+3. Netease Music API (auto-saved to cache)
 
 ## Project Structure
 
@@ -115,6 +133,7 @@ cmus-lyric/
 ├── cmd/lyrics/           # Application entry point
 ├── internal/
 │   ├── cmus/             # cmus IPC (Unix socket + exec fallback)
+│   ├── cover/            # Album cover display
 │   ├── lyric/            # Lyric loading, parsing, fetching, caching
 │   └── player/           # Bubble Tea model, view, styles
 ├── .github/workflows/    # CI/CD (auto-release on tag)

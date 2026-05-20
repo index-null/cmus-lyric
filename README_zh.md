@@ -34,10 +34,13 @@
 - 自动从 LRCLIB 和网易云音乐获取歌词（非阻塞）
 - 翻译歌词支持（`.t.lrc` / `.t.lyric` 对照显示）
 - 从音频文件提取内嵌歌词（ID3/Vorbis Comment）
-- 歌词缓存系统（`~/.cache/cmus-lyric/`），支持离线和只读目录
+- 专辑封面显示（`lyrics cover`）
+- 歌词缓存系统（路径由 `os.UserCacheDir()` 确定，如 macOS 通常为 `~/Library/Caches/cmus-lyric/`，Linux 通常为 `~/.cache/cmus-lyric/`），支持离线和只读目录
+- 时长容差匹配（±2秒），提升歌词匹配准确度
 - Unix socket IPC，低开销 cmus 通信
 - GBK/UTF-8 编码自动检测
 - 进度条与播放状态
+- 调试模式（`d` 键）查看曲目元数据和歌词来源
 - 简洁无干扰的界面
 
 ## 安装
@@ -99,14 +102,29 @@ lyrics
 | ------------ | ---- |
 | `q` `Ctrl+C` | 退出 |
 | `?`          | 帮助 |
+| `d`          | 调试 |
 
 ### 歌词解析逻辑
 
 1. 从音频文件提取内嵌歌词（ID3 USLT / Vorbis Comment）
 2. 在音频文件同目录下查找 `<文件名>.lrc` 或 `<文件名>.lyric`
 3. 若存在 `.t.lrc` / `.t.lyric` 文件，翻译歌词会显示在每行下方
-4. 查找本地缓存（`~/.cache/cmus-lyric/`）
+4. 查找本地缓存（路径由 `os.UserCacheDir()` 确定，如 macOS 通常为 `~/Library/Caches/cmus-lyric/`，Linux 通常为 `~/.cache/cmus-lyric/`）
 5. 若均未找到，依次从 LRCLIB、网易云音乐获取，保存为 `.lrc` 并缓存
+   - **时长容差**：匹配曲目时允许 ±2 秒的时长偏差
+
+### 专辑封面
+
+显示当前播放曲目的专辑封面：
+
+```bash
+lyrics cover
+```
+
+封面获取来源：
+1. 音频文件内嵌专辑封面
+2. 本地缓存（路径由 `os.UserCacheDir()` 确定，如 macOS 通常为 `~/Library/Caches/cmus-lyric/`，Linux 通常为 `~/.cache/cmus-lyric/`）
+3. 网易云音乐 API（自动保存到缓存）
 
 ## 项目结构
 
@@ -115,6 +133,7 @@ cmus-lyric/
 ├── cmd/lyrics/           # 应用入口
 ├── internal/
 │   ├── cmus/             # cmus IPC（Unix socket + exec 回退）
+│   ├── cover/            # 专辑封面显示
 │   ├── lyric/            # 歌词加载、解析、获取、缓存
 │   └── player/           # Bubble Tea 模型、视图、样式
 ├── .github/workflows/    # CI/CD（tag 触发自动发布）
