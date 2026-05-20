@@ -44,7 +44,7 @@ func TestSaveAndLoadFromCache(t *testing.T) {
 		os.Remove(CacheTransPath(artist, title))
 	})
 
-	result := LoadFromCache(artist, title)
+	result, _, _ := LoadFromCache(artist, title)
 	if result == nil {
 		t.Fatal("expected non-nil result from cache")
 	}
@@ -75,7 +75,7 @@ func TestSaveToCache_CreatesDir(t *testing.T) {
 }
 
 func TestLoadFromCache_NotFound(t *testing.T) {
-	result := LoadFromCache("NonExistent_"+t.Name(), "Song_"+t.Name())
+	result, _, _ := LoadFromCache("NonExistent_"+t.Name(), "Song_"+t.Name())
 	if result != nil {
 		t.Errorf("expected nil for missing cache, got %v", result)
 	}

@@ -132,7 +132,7 @@ func fetchFromLrcLib(name, artist string, duration int) (string, string, error) 
 		}
 	}
 
-	record, err := lrclibSearch(name, artist)
+	record, err := lrclibSearch(name, artist, duration)
 	if err == nil {
 		return pickLrcLibLyric(record), "", nil
 	}
@@ -141,7 +141,7 @@ func fetchFromLrcLib(name, artist string, duration int) (string, string, error) 
 	if len(artist) > 0 {
 		q = name + " " + artist
 	}
-	record, err = lrclibSearchQ(q)
+	record, err = lrclibSearchQ(q, name, artist, duration)
 	if err != nil {
 		return "", "", err
 	}
@@ -176,7 +176,7 @@ func lrclibGet(name, artist string, duration int) (*lrcLibRecord, error) {
 	return record, nil
 }
 
-func lrclibSearch(name, artist string) (*lrcLibRecord, error) {
+func lrclibSearch(name, artist string, duration int) (*lrcLibRecord, error) {
 	params := url.Values{}
 	if len(artist) > 0 {
 		params.Set("track_name", name)
@@ -198,15 +198,60 @@ func lrclibSearch(name, artist string) (*lrcLibRecord, error) {
 		return nil, fmt.Errorf("not found on LRCLIB")
 	}
 
+	// 优先选择：title 相似 + 有同步歌词 + duration 容差范围内
 	for i := range results {
 		if len(results[i].SyncedLyrics) > 0 {
+			if matchLRCLIBRecord(&results[i], name, artist, duration) {
+				return &results[i], nil
+			}
+		}
+	}
+
+	// 次选：title 相似 + duration 容差范围内（无论是否有同步歌词）
+	for i := range results {
+		if matchLRCLIBRecord(&results[i], name, artist, duration) {
 			return &results[i], nil
 		}
 	}
-	return &results[0], nil
+
+	// 最后：返回第一个 title/artist 匹配的结果（忽略 duration 容差）
+	for i := range results {
+		if len(results[i].SyncedLyrics) > 0 {
+			if matchLRCLIBRecord(&results[i], name, artist, 0) {
+				return &results[i], nil
+			}
+		}
+	}
+	for i := range results {
+		if matchLRCLIBRecord(&results[i], name, artist, 0) {
+			return &results[i], nil
+		}
+	}
+
+	return &results[0], fmt.Errorf("no matching result found on LRCLIB")
+	}
+
+func matchLRCLIBRecord(record *lrcLibRecord, name, artist string, duration int) bool {
+	// 检查 title 相似度
+	titleMatch := strings.Contains(record.TrackName, name) || strings.Contains(name, record.TrackName)
+
+	// 检查 artist 相似度（如果提供了 artist）
+	artistMatch := true
+	if len(artist) > 0 {
+		artistMatch = strings.Contains(record.ArtistName, artist) || strings.Contains(artist, record.ArtistName)
+	}
+
+	// 检查 duration 容差（如果提供了 duration）
+	durationMatch := true
+	if duration > 0 {
+		recordDuration := int(record.Duration)
+		durationMatch = recordDuration >= duration-2 && recordDuration <= duration+2
+	}
+
+	return titleMatch && artistMatch && durationMatch
 }
 
-func lrclibSearchQ(q string) (*lrcLibRecord, error) {
+func lrclibSearchQ(q, name, artist string, duration int) (*lrcLibRecord, error) {
 	params := url.Values{}
 	params.Set("q", q)
 
@@ -223,12 +268,37 @@ func lrclibSearchQ(q string) (*lrcLibRecord, error) {
 		return nil, fmt.Errorf("not found on LRCLIB")
 	}
 
+	// 优先选择：title 相似 + 有同步歌词 + duration 容差范围内
 	for i := range results {
 		if len(results[i].SyncedLyrics) > 0 {
+			if matchLRCLIBRecord(&results[i], name, artist, duration) {
+				return &results[i], nil
+			}
+		}
+	}
+
+	// 次选：title 相似 + duration 容差范围内
+	for i := range results {
+		if matchLRCLIBRecord(&results[i], name, artist, duration) {
 			return &results[i], nil
 		}
 	}
-	return &results[0], nil
+
+	// 最后：返回第一个 title/artist 匹配的结果（忽略 duration 容差）
+	for i := range results {
+		if len(results[i].SyncedLyrics) > 0 {
+			if matchLRCLIBRecord(&results[i], name, artist, 0) {
+				return &results[i], nil
+			}
+		}
+	}
+	for i := range results {
+		if matchLRCLIBRecord(&results[i], name, artist, 0) {
+			return &results[i], nil
+		}
+	}
+
+	return nil, fmt.Errorf("no matching result found on LRCLIB")
 }
 
 func fetchFromNetease(name, artist string, duration int) (string, string, error) {
@@ -236,7 +306,7 @@ func fetchFromNetease(name, artist string, duration int) (string, string, error)
 	if err != nil {
 		return "", "", err
 	}
-	return neteaseGetLyric(sr.Result.Songs[neteaseMatchSong(sr, duration)].ID)
+	return neteaseGetLyric(sr.Result.Songs[neteaseMatchSong(sr, duration, name)].ID)
 }
 
 func neteaseSearch(name, artist string) (*neteaseSongResult, error) {
@@ -267,12 +337,26 @@ func neteaseSearch(name, artist string) (*neteaseSongResult, error) {
 	return &sr, nil
 }
 
-func neteaseMatchSong(sr *neteaseSongResult, duration int) int {
+func neteaseMatchSong(sr *neteaseSongResult, duration int, title string) int {
+	// 第一优先：duration 匹配（±2秒容差）+ title 相似度
+	if duration > 0 {
+		for i, s := range sr.Result.Songs {
+			songDuration := s.Duration / 1000
+			titleMatch := strings.Contains(s.Name, title) || strings.Contains(title, s.Name)
+			if songDuration >= duration-2 && songDuration <= duration+2 && titleMatch {
+				return i
+			}
+		}
+	}
+
+	// 第二优先：title 相似度匹配
 	for i, s := range sr.Result.Songs {
-		if duration > 0 && s.Duration/1000 == duration {
+		if strings.Contains(s.Name, title) || strings.Contains(title, s.Name) {
 			return i
 		}
 	}
+
+	// 默认返回第一个
 	return 0
 }
 
@@ -348,7 +432,7 @@ func FetchCoverURL(name, artist string, duration int) (string, error) {
 		return "", err
 	}
 
-	idx := neteaseMatchSong(sr, duration)
+	idx := neteaseMatchSong(sr, duration, name)
 	if picURL := sr.Result.Songs[idx].Album.PicURL; picURL != "" {
 		return picURL, nil
 	}

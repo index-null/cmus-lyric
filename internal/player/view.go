@@ -2,14 +2,21 @@ package player
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/index-null/cmus-lyric/internal/lyric"
 )
 
 func (m Model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return ""
+	}
+
+	if m.showDebug {
+		return m.renderDebug()
 	}
 
 	if m.showHelp {
@@ -265,4 +272,117 @@ func (m Model) renderHelp() string {
 
 func (m Model) innerWidth() int {
 	return max(m.width-4, 0)
+}
+
+func (m Model) renderDebug() string {
+	w := m.innerWidth()
+	p := m.pal
+
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(p.Border.Hex())).
+		Width(m.width - 2).
+		Height(m.height - 2)
+
+	debugTitleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(p.Title.Hex())).
+		Background(lipgloss.Color(p.TitleBg.Hex())).
+		Padding(0, 1)
+
+	debugKeyStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(p.Primary.Hex())).
+		Bold(true)
+
+	debugValStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#AAAAAA"))
+
+	title := debugTitleStyle.Render("Debug")
+	divider := gradientDivider(w, p.Primary, p.Secondary)
+
+	// 1. 歌曲元信息
+	metaLines := []string{
+		debugKeyStyle.Render("File:") + " " + debugValStyle.Render(m.track.File),
+		debugKeyStyle.Render("Artist:") + " " + debugValStyle.Render(m.track.Artist),
+		debugKeyStyle.Render("Title:") + " " + debugValStyle.Render(m.track.Title),
+		debugKeyStyle.Render("Album:") + " " + debugValStyle.Render(m.track.Album),
+		debugKeyStyle.Render("Duration:") + " " + debugValStyle.Render(fmt.Sprintf("%d:%02d", m.track.Duration/60, m.track.Duration%60)),
+		debugKeyStyle.Render("Position:") + " " + debugValStyle.Render(fmt.Sprintf("%d:%02d", m.track.Position/60, m.track.Position%60)),
+		debugKeyStyle.Render("Status:") + " " + debugValStyle.Render(m.track.Status),
+	}
+
+	// 2. 歌词来源
+	sourceStr := m.lyricSource
+	if sourceStr == "" {
+		sourceStr = "none"
+	}
+	sourceLine := debugKeyStyle.Render("Lyric Source:") + " " + debugValStyle.Render(sourceStr)
+
+	// 3. 本地文件和缓存文件信息
+	localLines := []string{debugKeyStyle.Render("Local File:")}
+	if m.lyricFile != "" && m.lyricSource == "local" {
+		if content, err := os.ReadFile(m.lyricFile); err == nil {
+			localLines[0] += " " + debugValStyle.Render(m.lyricFile+" (exists)")
+			// 预览前5行
+			lines := strings.SplitN(string(content), "\n", 6)
+			for i, l := range lines {
+				if i >= 5 { break }
+				localLines = append(localLines, "  "+debugValStyle.Render(l))
+			}
+		} else {
+			localLines[0] += " " + debugValStyle.Render(m.lyricFile+" (not found)")
+		}
+	} else {
+		// 检查可能的本地文件路径
+		dotIdx := strings.LastIndex(m.track.File, ".")
+		slashIdx := strings.LastIndex(m.track.File, "/")
+		if dotIdx >= 0 && slashIdx >= 0 {
+			base := m.track.File[:dotIdx]
+			dir := m.track.File[:slashIdx]
+			found := false
+			for _, ext := range []string{".lyric", ".lrc"} {
+				for _, b := range []string{base, dir + "/" + m.track.Title} {
+					if _, err := os.Stat(b + ext); err == nil {
+						localLines[0] += " " + debugValStyle.Render(b+ext+" (exists)")
+						found = true
+						break
+					}
+				}
+				if found { break }
+			}
+			if !found {
+				localLines[0] += " " + debugValStyle.Render("(not found)")
+			}
+		}
+	}
+
+	cacheLines := []string{debugKeyStyle.Render("Cache File:")}
+	cachePath := lyric.CachePath(m.track.Artist, m.track.Title)
+	if content, err := os.ReadFile(cachePath); err == nil {
+		cacheLines[0] += " " + debugValStyle.Render(cachePath+" (exists)")
+		// 预览前5行
+		lines := strings.SplitN(string(content), "\n", 6)
+		for i, l := range lines {
+			if i >= 5 { break }
+			cacheLines = append(cacheLines, "  "+debugValStyle.Render(l))
+		}
+	} else {
+		cacheLines[0] += " " + debugValStyle.Render(cachePath+" (not found)")
+	}
+
+	// 组装所有内容
+	all := make([]string, 0)
+	all = append(all, title, divider, "")
+	all = append(all, metaLines...)
+	all = append(all, "", divider, "")
+	all = append(all, sourceLine)
+	all = append(all, "", divider, "")
+	all = append(all, localLines...)
+	all = append(all, "", divider, "")
+	all = append(all, cacheLines...)
+	all = append(all, "", divider)
+	all = append(all, footerStyle.Render("  press d to go back"))
+
+	content := lipgloss.JoinVertical(lipgloss.Left, all...)
+	return borderStyle.Render(content)
 }

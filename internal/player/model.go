@@ -1,6 +1,8 @@
 package player
 
 import (
+	"os"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -11,18 +13,21 @@ import (
 )
 
 type Model struct {
-	track       cmus.Track
-	lyrics      []lyric.Line
-	curFile     string
-	curLineIdx  int
-	progress    progress.Model
-	pal         palette
-	width       int
-	height      int
-	showHelp    bool
-	errMsg      string
-	fetchingMsg string
-	fetching    bool
+	track        cmus.Track
+	lyrics       []lyric.Line
+	curFile      string
+	curLineIdx   int
+	progress     progress.Model
+	pal          palette
+	width        int
+	height       int
+	showHelp     bool
+	showDebug    bool
+	errMsg       string
+	fetchingMsg  string
+	fetching     bool
+	lyricSource  string
+	lyricFile    string
 }
 
 type tickMsg struct{}
@@ -61,6 +66,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "?":
 			m.showHelp = !m.showHelp
 			return m, nil
+		case "d":
+			m.showDebug = !m.showDebug
+			return m, nil
 		}
 
 	case tea.WindowSizeMsg:
@@ -85,6 +93,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.errMsg = "fetch failed: " + msg.err.Error()
 			m.lyrics = nil
+			m.lyricSource = "fetch failed"
 			return m, nil
 		}
 		if len(msg.lrc) > 0 {
@@ -92,8 +101,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.lyrics = lyric.Load(m.track.File, m.track.Title)
 		if m.lyrics == nil {
-			m.lyrics = lyric.LoadFromCache(m.track.Artist, m.track.Title)
+			m.lyrics, _, _ = lyric.LoadFromCache(m.track.Artist, m.track.Title)
 		}
+		m.lyricSource = "fetched"
+		m.lyricFile = lyric.CachePath(msg.artist, msg.title)
 		m.curLineIdx = -1
 		return m, nil
 	}
@@ -126,12 +137,46 @@ func (m Model) poll() (Model, tea.Cmd) {
 		m.progress.Width = max(m.width-6, 0)
 
 		lyrics := lyric.Load(track.File, track.Title)
-		if lyrics == nil {
-			lyrics = lyric.LoadFromCache(track.Artist, track.Title)
+		if lyrics != nil {
+			m.lyricSource = "local"
+			dotIdx := strings.LastIndex(track.File, ".")
+			slashIdx := strings.LastIndex(track.File, "/")
+			if dotIdx >= 0 && slashIdx >= 0 {
+				base := track.File[:dotIdx]
+				dir := track.File[:slashIdx]
+				bases := []string{base}
+				if len(track.Title) > 0 {
+					titleBase := dir + "/" + track.Title
+					if titleBase != base {
+						bases = append(bases, titleBase)
+					}
+				}
+				for _, b := range bases {
+					for _, ext := range []string{".lyric", ".lrc"} {
+						if _, err := os.Stat(b + ext); err == nil {
+							m.lyricFile = b + ext
+							break
+						}
+					}
+					if m.lyricFile != "" {
+						break
+					}
+				}
+			}
+		} else {
+			cachedLyrics, cachedLrc, cachedTLyric := lyric.LoadFromCache(track.Artist, track.Title)
+			if cachedLyrics != nil {
+				lyrics = cachedLyrics
+				m.lyricSource = "cache"
+				m.lyricFile = lyric.CachePath(track.Artist, track.Title)
+				// 回写缓存内容到本地文件
+				_ = lyric.SaveToLocal(track.File, track.Title, cachedLrc, cachedTLyric)
+			}
 		}
 		if lyrics == nil && !m.fetching {
 			m.fetching = true
 			m.fetchingMsg = "fetching lyrics..."
+			m.lyricSource = "fetching"
 			file := track.File
 			dt := track.Duration
 			artist := track.Artist

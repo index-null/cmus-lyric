@@ -215,3 +215,29 @@ func loadEmbedded(path string) []Line {
 
 	return BuildLines(lines, nil)
 }
+
+func SaveToLocal(file, title, lrc, tlyric string) error {
+	dotIdx := strings.LastIndex(file, ".")
+	slashIdx := strings.LastIndex(file, "/")
+	if dotIdx < 0 || slashIdx < 0 {
+		return nil
+	}
+
+	dir := file[:slashIdx]
+	name := title
+	if len(name) == 0 {
+		name = file[slashIdx+1 : dotIdx]
+	}
+
+	path := dir + "/" + name + ".lrc"
+	if err := save(path, strings.NewReader(lrc)); err != nil {
+		return err
+	}
+
+	if len(tlyric) > 0 {
+		tpath := dir + "/" + name + ".t.lrc"
+		_ = save(tpath, strings.NewReader(tlyric))
+	}
+
+	return nil
+}

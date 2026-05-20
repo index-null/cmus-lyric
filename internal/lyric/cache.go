@@ -28,28 +28,30 @@ func CacheTransPath(artist, title string) string {
 	return filepath.Join(CacheDir(), CacheKey(artist, title)+".t.lrc")
 }
 
-func LoadFromCache(artist, title string) []Line {
+func LoadFromCache(artist, title string) ([]Line, string, string) {
 	path := CachePath(artist, title)
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil
+		return nil, "", ""
 	}
 
 	content = ToUTF8(content)
 	lines := BuildLyricMap(splitLines(content))
 	if len(lines) == 0 {
-		return nil
+		return nil, "", ""
 	}
 
 	mainLines := splitLines(content)
 	var tlines []string
+	var tcontent string
 	tpath := CacheTransPath(artist, title)
 	if tc, err := os.ReadFile(tpath); err == nil {
 		tc = ToUTF8(tc)
+		tcontent = string(tc)
 		tlines = splitLines(tc)
 	}
 
-	return BuildLines(mainLines, tlines)
+	return BuildLines(mainLines, tlines), string(content), tcontent
 }
 
 func SaveToCache(artist, title, lrc, tlyric string) error {
