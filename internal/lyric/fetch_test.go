@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -110,24 +111,51 @@ func TestSave(t *testing.T) {
 }
 
 func TestFetchForCmus_PathParsing(t *testing.T) {
+	// Mock LRCLIB server that returns a valid record for "/get"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		record := lrcLibRecord{
-			ID:           1,
-			SyncedLyrics: "[00:01.00]mock lyric",
+		// lrclibGet hits lrcLibBaseURL + "/get?" + params
+		if strings.Contains(r.URL.Path, "/get") {
+			json.NewEncoder(w).Encode(lrcLibRecord{
+				ID:           1,
+				TrackName:    "Test Song",
+				ArtistName:   "TestArtist",
+				SyncedLyrics: "[00:01.00]mock lyric",
+			})
+		} else {
+			w.WriteHeader(http.StatusNotFound)
 		}
-		json.NewEncoder(w).Encode(record)
 	}))
 	defer server.Close()
 
+	origURL := lrcLibBaseURL
+	lrcLibBaseURL = server.URL
+	t.Cleanup(func() { lrcLibBaseURL = origURL })
+
+	// Create test audio file with space in its name
 	dir := t.TempDir()
 	audioFile := filepath.Join(dir, "Test Song.mp3")
-	os.WriteFile(audioFile, []byte("fake"), 0644)
+	if err := os.WriteFile(audioFile, []byte("fake"), 0644); err != nil {
+		t.Fatalf("failed to write audio file: %v", err)
+	}
 
-	origURL := lrcLibBaseURL
-	defer func() {
-		// can't easily restore package-level const, skip this in real scenario
-	}()
-	_ = origURL
+	// Call FetchForCmus – this should:
+	//   1. Parse the path into dir="<dir>", name="Test Song"
+	//   2. Fetch lyrics from the mock server
+	//   3. Save lyrics to <dir>/Test Song.lrc
+	err := FetchForCmus(audioFile, 200, "TestArtist", "Test Song")
+	if err != nil {
+		t.Fatalf("FetchForCmus failed: %v", err)
+	}
+
+	// Verify the lyric file was saved to the correct path
+	lrcFile := filepath.Join(dir, "Test Song.lrc")
+	data, err := os.ReadFile(lrcFile)
+	if err != nil {
+		t.Fatalf("expected lyric file at %s: %v", lrcFile, err)
+	}
+	if string(data) != "[00:01.00]mock lyric" {
+		t.Errorf("expected lyric content %q, got %q", "[00:01.00]mock lyric", string(data))
+	}
 }
 
 func TestLrclibGet_ParseResponse(t *testing.T) {

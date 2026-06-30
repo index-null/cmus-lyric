@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	lrcLibBaseURL = "https://lrclib.net/api"
-	userAgent     = "cmus-lyric v2.0.0 (https://github.com/index-null/cmus-lyric)"
-	httpTimeout   = 10 * time.Second
+	userAgent   = "cmus-lyric v2.0.0 (https://github.com/index-null/cmus-lyric)"
+	httpTimeout = 10 * time.Second
 )
+
+var lrcLibBaseURL = "https://lrclib.net/api"
 
 var (
 	neteaseSearchAPI = "https://music.163.com/api/search/get/web"
