@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/index-null/cmus-lyric/internal/util"
 )
 
 const (
@@ -92,13 +94,13 @@ func FetchForCmus(file string, dt int, artist, title string) error {
 }
 
 func FetchContent(file string, dt int, artist, title string) (string, string, error) {
-	pathIdx := strings.LastIndexAny(file, ".")
-	titleIdx := strings.LastIndexAny(file, "/")
-	dir := file[:titleIdx]
+	dir, name, ok := util.SplitPath(file)
+	if !ok {
+		return "", "", fmt.Errorf("invalid file path: %s", file)
+	}
 
-	name := title
-	if len(name) == 0 {
-		name = file[titleIdx+1 : pathIdx]
+	if len(title) > 0 {
+		name = title
 	}
 
 	content, tlyric, err := fetchFromLrcLib(name, artist, dt)
@@ -229,7 +231,7 @@ func lrclibSearch(name, artist string, duration int) (*lrcLibRecord, error) {
 	}
 
 	return &results[0], fmt.Errorf("no matching result found on LRCLIB")
-	}
+}
 
 func matchLRCLIBRecord(record *lrcLibRecord, name, artist string, duration int) bool {
 	// 检查 title 相似度

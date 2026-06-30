@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dhowden/tag"
+	"github.com/index-null/cmus-lyric/internal/util"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
 )
@@ -22,27 +23,21 @@ type Line struct {
 }
 
 func Load(path, title string) []Line {
-	dotIdx := strings.LastIndex(path, ".")
-	slashIdx := strings.LastIndex(path, "/")
-	if dotIdx < 0 || slashIdx < 0 {
-		return nil
-	}
-
 	if lines := loadEmbedded(path); lines != nil {
 		return lines
 	}
 
-	base := path[:dotIdx]
-	dir := path[:slashIdx]
+	dir, name, ok := util.SplitPath(path)
+	if !ok {
+		return nil
+	}
 
 	extensions := []string{".lyric", ".lrc"}
 
+	base := dir + "/" + name
 	bases := []string{base}
-	if len(title) > 0 {
-		titleBase := dir + "/" + title
-		if titleBase != base {
-			bases = append(bases, titleBase)
-		}
+	if len(title) > 0 && title != name {
+		bases = append(bases, dir+"/"+title)
 	}
 
 	var content []byte
@@ -217,16 +212,13 @@ func loadEmbedded(path string) []Line {
 }
 
 func SaveToLocal(file, title, lrc, tlyric string) error {
-	dotIdx := strings.LastIndex(file, ".")
-	slashIdx := strings.LastIndex(file, "/")
-	if dotIdx < 0 || slashIdx < 0 {
+	dir, name, ok := util.SplitPath(file)
+	if !ok {
 		return nil
 	}
 
-	dir := file[:slashIdx]
-	name := title
-	if len(name) == 0 {
-		name = file[slashIdx+1 : dotIdx]
+	if len(title) > 0 {
+		name = title
 	}
 
 	path := dir + "/" + name + ".lrc"

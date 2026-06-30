@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/index-null/cmus-lyric/internal/lyric"
+	"github.com/index-null/cmus-lyric/internal/util"
 )
 
 func (m Model) View() string {
@@ -46,10 +47,9 @@ func (m Model) renderHeader() string {
 	if m.track.Title != "" {
 		title = m.track.Title
 	} else if m.track.File != "" {
-		pathIdx := strings.LastIndex(m.track.File, "/")
-		dotIdx := strings.LastIndex(m.track.File, ".")
-		if pathIdx >= 0 && dotIdx > pathIdx {
-			title = m.track.File[pathIdx+1 : dotIdx]
+		_, name, ok := util.SplitPath(m.track.File)
+		if ok {
+			title = name
 		}
 	}
 	artist = m.track.Artist
@@ -326,7 +326,9 @@ func (m Model) renderDebug() string {
 			// 预览前5行
 			lines := strings.SplitN(string(content), "\n", 6)
 			for i, l := range lines {
-				if i >= 5 { break }
+				if i >= 5 {
+					break
+				}
 				localLines = append(localLines, "  "+debugValStyle.Render(l))
 			}
 		} else {
@@ -334,11 +336,8 @@ func (m Model) renderDebug() string {
 		}
 	} else {
 		// 检查可能的本地文件路径
-		dotIdx := strings.LastIndex(m.track.File, ".")
-		slashIdx := strings.LastIndex(m.track.File, "/")
-		if dotIdx >= 0 && slashIdx >= 0 {
-			base := m.track.File[:dotIdx]
-			dir := m.track.File[:slashIdx]
+		if dir, name, ok := util.SplitPath(m.track.File); ok {
+			base := dir + "/" + name
 			found := false
 			for _, ext := range []string{".lyric", ".lrc"} {
 				for _, b := range []string{base, dir + "/" + m.track.Title} {
@@ -348,7 +347,9 @@ func (m Model) renderDebug() string {
 						break
 					}
 				}
-				if found { break }
+				if found {
+					break
+				}
 			}
 			if !found {
 				localLines[0] += " " + debugValStyle.Render("(not found)")
@@ -363,7 +364,9 @@ func (m Model) renderDebug() string {
 		// 预览前5行
 		lines := strings.SplitN(string(content), "\n", 6)
 		for i, l := range lines {
-			if i >= 5 { break }
+			if i >= 5 {
+				break
+			}
 			cacheLines = append(cacheLines, "  "+debugValStyle.Render(l))
 		}
 	} else {

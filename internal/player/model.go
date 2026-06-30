@@ -2,7 +2,6 @@ package player
 
 import (
 	"os"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -10,24 +9,25 @@ import (
 
 	"github.com/index-null/cmus-lyric/internal/cmus"
 	"github.com/index-null/cmus-lyric/internal/lyric"
+	"github.com/index-null/cmus-lyric/internal/util"
 )
 
 type Model struct {
-	track        cmus.Track
-	lyrics       []lyric.Line
-	curFile      string
-	curLineIdx   int
-	progress     progress.Model
-	pal          palette
-	width        int
-	height       int
-	showHelp     bool
-	showDebug    bool
-	errMsg       string
-	fetchingMsg  string
-	fetching     bool
-	lyricSource  string
-	lyricFile    string
+	track       cmus.Track
+	lyrics      []lyric.Line
+	curFile     string
+	curLineIdx  int
+	progress    progress.Model
+	pal         palette
+	width       int
+	height      int
+	showHelp    bool
+	showDebug   bool
+	errMsg      string
+	fetchingMsg string
+	fetching    bool
+	lyricSource string
+	lyricFile   string
 }
 
 type tickMsg struct{}
@@ -139,17 +139,11 @@ func (m Model) poll() (Model, tea.Cmd) {
 		lyrics := lyric.Load(track.File, track.Title)
 		if lyrics != nil {
 			m.lyricSource = "local"
-			dotIdx := strings.LastIndex(track.File, ".")
-			slashIdx := strings.LastIndex(track.File, "/")
-			if dotIdx >= 0 && slashIdx >= 0 {
-				base := track.File[:dotIdx]
-				dir := track.File[:slashIdx]
+			if dir, name, ok := util.SplitPath(track.File); ok {
+				base := dir + "/" + name
 				bases := []string{base}
-				if len(track.Title) > 0 {
-					titleBase := dir + "/" + track.Title
-					if titleBase != base {
-						bases = append(bases, titleBase)
-					}
+				if len(track.Title) > 0 && track.Title != name {
+					bases = append(bases, dir+"/"+track.Title)
 				}
 				for _, b := range bases {
 					for _, ext := range []string{".lyric", ".lrc"} {
