@@ -1,0 +1,49 @@
+# Dependabot
+# docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    # T+7
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automated
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      charmbracelet:
+        patterns:
+          - "github.com/charmbracelet/*"
+        update-types:
+          - minor
+          - patch
+      golang-x:
+        patterns:
+          - "golang.org/x/*"
+        update-types:
+          - minor
+          - patch
+
+  # 保持 GitHub Actions 自身更新
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
