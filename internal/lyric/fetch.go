@@ -192,45 +192,7 @@ func lrclibSearch(name, artist string, duration int) (*lrcLibRecord, error) {
 		return nil, err
 	}
 
-	var results []lrcLibRecord
-	if err := json.Unmarshal(body, &results); err != nil {
-		return nil, fmt.Errorf("parse error: %w", err)
-	}
-	if len(results) == 0 {
-		return nil, fmt.Errorf("not found on LRCLIB")
-	}
-
-	// 优先选择：title 相似 + 有同步歌词 + duration 容差范围内
-	for i := range results {
-		if len(results[i].SyncedLyrics) > 0 {
-			if matchLRCLIBRecord(&results[i], name, artist, duration) {
-				return &results[i], nil
-			}
-		}
-	}
-
-	// 次选：title 相似 + duration 容差范围内（无论是否有同步歌词）
-	for i := range results {
-		if matchLRCLIBRecord(&results[i], name, artist, duration) {
-			return &results[i], nil
-		}
-	}
-
-	// 最后：返回第一个 title/artist 匹配的结果（忽略 duration 容差）
-	for i := range results {
-		if len(results[i].SyncedLyrics) > 0 {
-			if matchLRCLIBRecord(&results[i], name, artist, 0) {
-				return &results[i], nil
-			}
-		}
-	}
-	for i := range results {
-		if matchLRCLIBRecord(&results[i], name, artist, 0) {
-			return &results[i], nil
-		}
-	}
-
-	return &results[0], fmt.Errorf("no matching result found on LRCLIB")
+	return parseAndPickLRCLIB(body, name, artist, duration)
 }
 
 func matchLRCLIBRecord(record *lrcLibRecord, name, artist string, duration int) bool {
@@ -253,6 +215,47 @@ func matchLRCLIBRecord(record *lrcLibRecord, name, artist string, duration int) 
 	return titleMatch && artistMatch && durationMatch
 }
 
+// parseAndPickLRCLIB 解析搜索结果并执行 4-pass 匹配，返回最佳记录。
+func parseAndPickLRCLIB(body []byte, name, artist string, duration int) (*lrcLibRecord, error) {
+	var results []lrcLibRecord
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, fmt.Errorf("parse error: %w", err)
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("not found on LRCLIB")
+	}
+
+	// Pass 1：有同步歌词 + 各项匹配（含 duration 容差）
+	for i := range results {
+		if len(results[i].SyncedLyrics) > 0 && matchLRCLIBRecord(&results[i], name, artist, duration) {
+			return &results[i], nil
+		}
+	}
+
+	// Pass 2：各项匹配（含 duration 容差），不考虑同步歌词
+	for i := range results {
+		if matchLRCLIBRecord(&results[i], name, artist, duration) {
+			return &results[i], nil
+		}
+	}
+
+	// Pass 3：有同步歌词 + title/artist 匹配，忽略 duration
+	for i := range results {
+		if len(results[i].SyncedLyrics) > 0 && matchLRCLIBRecord(&results[i], name, artist, 0) {
+			return &results[i], nil
+		}
+	}
+
+	// Pass 4：仅 title/artist 匹配，忽略 duration
+	for i := range results {
+		if matchLRCLIBRecord(&results[i], name, artist, 0) {
+			return &results[i], nil
+		}
+	}
+
+	return nil, fmt.Errorf("no matching result found on LRCLIB")
+}
+
 func lrclibSearchQ(q, name, artist string, duration int) (*lrcLibRecord, error) {
 	params := url.Values{}
 	params.Set("q", q)
@@ -262,45 +265,7 @@ func lrclibSearchQ(q, name, artist string, duration int) (*lrcLibRecord, error) 
 		return nil, err
 	}
 
-	var results []lrcLibRecord
-	if err := json.Unmarshal(body, &results); err != nil {
-		return nil, fmt.Errorf("parse error: %w", err)
-	}
-	if len(results) == 0 {
-		return nil, fmt.Errorf("not found on LRCLIB")
-	}
-
-	// 优先选择：title 相似 + 有同步歌词 + duration 容差范围内
-	for i := range results {
-		if len(results[i].SyncedLyrics) > 0 {
-			if matchLRCLIBRecord(&results[i], name, artist, duration) {
-				return &results[i], nil
-			}
-		}
-	}
-
-	// 次选：title 相似 + duration 容差范围内
-	for i := range results {
-		if matchLRCLIBRecord(&results[i], name, artist, duration) {
-			return &results[i], nil
-		}
-	}
-
-	// 最后：返回第一个 title/artist 匹配的结果（忽略 duration 容差）
-	for i := range results {
-		if len(results[i].SyncedLyrics) > 0 {
-			if matchLRCLIBRecord(&results[i], name, artist, 0) {
-				return &results[i], nil
-			}
-		}
-	}
-	for i := range results {
-		if matchLRCLIBRecord(&results[i], name, artist, 0) {
-			return &results[i], nil
-		}
-	}
-
-	return nil, fmt.Errorf("no matching result found on LRCLIB")
+	return parseAndPickLRCLIB(body, name, artist, duration)
 }
 
 func fetchFromNetease(name, artist string, duration int) (string, string, error) {
