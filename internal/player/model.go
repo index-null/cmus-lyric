@@ -28,6 +28,7 @@ type Model struct {
 	fetching    bool
 	lyricSource string
 	lyricFile   string
+	unsynced    bool
 }
 
 type tickMsg struct{}
@@ -87,6 +88,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fetchDoneMsg:
 		m.fetching = false
 		m.fetchingMsg = ""
+		m.unsynced = false
 		if msg.file != m.curFile {
 			return m, nil
 		}
@@ -103,7 +105,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.lyrics == nil {
 			m.lyrics, _, _ = lyric.LoadFromCache(m.track.Artist, m.track.Title)
 		}
+		if m.lyrics == nil && len(msg.lrc) > 0 {
+			// 获取到的内容无时间戳 -> 完整展示，无进度高亮
+			m.lyrics = lyric.BuildUnsyncedLines(msg.lrc)
+			m.unsynced = true
+		}
 		m.lyricSource = "fetched"
+		if m.unsynced {
+			m.lyricSource = "fetched (unsynced)"
+		}
 		m.lyricFile = lyric.CachePath(msg.artist, msg.title)
 		m.curLineIdx = -1
 		return m, nil
@@ -137,6 +147,7 @@ func (m Model) poll() (Model, tea.Cmd) {
 		m.progress.Width = max(m.width-6, 0)
 
 		lyrics := lyric.Load(track.File, track.Title)
+		m.unsynced = false
 		if lyrics != nil {
 			m.lyricSource = "local"
 			if dir, name, ok := util.SplitPath(track.File); ok {
@@ -165,6 +176,12 @@ func (m Model) poll() (Model, tea.Cmd) {
 				m.lyricFile = lyric.CachePath(track.Artist, track.Title)
 				// 回写缓存内容到本地文件
 				_ = lyric.SaveToLocal(track.File, track.Title, cachedLrc, cachedTLyric)
+			} else if cachedLrc != "" {
+				// 缓存有无时间戳的纯文本 -> 完整展示，无进度高亮
+				lyrics = lyric.BuildUnsyncedLines(cachedLrc)
+				m.unsynced = true
+				m.lyricSource = "cache (unsynced)"
+				m.lyricFile = lyric.CachePath(track.Artist, track.Title)
 			}
 		}
 		if lyrics == nil && !m.fetching {

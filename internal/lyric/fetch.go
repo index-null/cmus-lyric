@@ -131,13 +131,19 @@ func fetchFromLrcLib(name, artist string, duration int) (string, string, error) 
 	if len(artist) > 0 && duration > 0 {
 		record, err := lrclibGet(name, artist, duration)
 		if err == nil {
-			return pickLrcLibLyric(record), "", nil
+			content := pickLrcLibLyric(record)
+			if hasTimestampLines(content) {
+				return content, "", nil
+			}
 		}
 	}
 
 	record, err := lrclibSearch(name, artist, duration)
 	if err == nil {
-		return pickLrcLibLyric(record), "", nil
+		content := pickLrcLibLyric(record)
+		if hasTimestampLines(content) {
+			return content, "", nil
+		}
 	}
 
 	q := name
@@ -148,7 +154,23 @@ func fetchFromLrcLib(name, artist string, duration int) (string, string, error) 
 	if err != nil {
 		return "", "", err
 	}
-	return pickLrcLibLyric(record), "", nil
+	content := pickLrcLibLyric(record)
+	// 最末次尝试不再过滤：即使无时间戳也返回纯文本，由上层 unsynced 路径兜底展示
+	return content, "", nil
+}
+
+// hasTimestampLines 检查内容是否包含带时间戳的歌词行。
+func hasTimestampLines(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if lrcTimeRe.MatchString(line) {
+			return true
+		}
+	}
+	return false
 }
 
 func pickLrcLibLyric(r *lrcLibRecord) string {

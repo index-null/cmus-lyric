@@ -128,6 +128,38 @@ func (m Model) renderLyrics() string {
 		return centerMsg(noLyricStyle.Render("no lyrics"))
 	}
 
+	if m.unsynced {
+		// 未同步歌词：根据播放进度估算当前位置，自然向下滚动
+		totalLines := len(m.lyrics)
+		estimatedLine := 0
+		if m.track.Duration > 0 && totalLines > 0 {
+			estimatedLine = m.track.Position * totalLines / m.track.Duration
+		}
+		estimatedLine = max(min(estimatedLine, totalLines-1), 0)
+
+		halfWin := availH / 2
+		start := max(estimatedLine-halfWin, 0)
+		end := min(start+availH, totalLines)
+		if end-start < availH {
+			start = max(end-availH, 0)
+		}
+
+		align := lipgloss.NewStyle().Width(w).Align(lipgloss.Center)
+		lines := make([]string, 0, availH)
+		for i := start; i < end; i++ {
+			txt := m.lyrics[i].Text
+			if txt == "" {
+				txt = "..."
+			}
+			s := lipgloss.NewStyle().Foreground(lipgloss.Color(p.Upcoming.Hex()))
+			lines = append(lines, align.Render(s.Render(txt)))
+		}
+		for len(lines) < availH {
+			lines = append(lines, "")
+		}
+		return lipgloss.JoinVertical(lipgloss.Left, lines...)
+	}
+
 	type renderedLine struct {
 		idx  int
 		text string
@@ -315,6 +347,9 @@ func (m Model) renderDebug() string {
 	sourceStr := m.lyricSource
 	if sourceStr == "" {
 		sourceStr = "none"
+	}
+	if m.unsynced && !strings.Contains(sourceStr, "unsynced") {
+		sourceStr += " (unsynced)"
 	}
 	sourceLine := debugKeyStyle.Render("Lyric Source:") + " " + debugValStyle.Render(sourceStr)
 

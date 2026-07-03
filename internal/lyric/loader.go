@@ -112,6 +112,22 @@ func BuildLines(lines, tlines []string) []Line {
 	return result
 }
 
+// BuildUnsyncedLines 将不带时间戳的纯文本转换为 Line 切片（TimeCS = -1），
+// 渲染层应全部展示，不做进度高亮。
+func BuildUnsyncedLines(content string) []Line {
+	var result []Line
+	for _, l := range splitLinesStr(content) {
+		l = strings.TrimSpace(l)
+		if l != "" {
+			result = append(result, Line{TimeCS: -1, Text: l})
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 func ToUTF8(data []byte) []byte {
 	if utf8.Valid(data) {
 		return data

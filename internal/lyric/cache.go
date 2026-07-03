@@ -36,12 +36,8 @@ func LoadFromCache(artist, title string) ([]Line, string, string) {
 	}
 
 	content = ToUTF8(content)
-	lines := BuildLyricMap(splitLines(content))
-	if len(lines) == 0 {
-		return nil, "", ""
-	}
-
 	mainLines := splitLines(content)
+
 	var tlines []string
 	var tcontent string
 	tpath := CacheTransPath(artist, title)
@@ -49,6 +45,11 @@ func LoadFromCache(artist, title string) ([]Line, string, string) {
 		tc = ToUTF8(tc)
 		tcontent = string(tc)
 		tlines = splitLines(tc)
+	}
+
+	if !hasTimestampLines(string(content)) {
+		// 无时间戳 → 返回原始内容让调用方处理未同步歌词
+		return nil, string(content), tcontent
 	}
 
 	return BuildLines(mainLines, tlines), string(content), tcontent
