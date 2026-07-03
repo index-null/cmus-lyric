@@ -152,7 +152,7 @@ func TestSocketPath_DefaultFallback(t *testing.T) {
 }
 
 func TestQuerySocket_MockServer(t *testing.T) {
-	sockPath := filepath.Join(t.TempDir(), "cmus-lyric-test.sock")
+	sockPath := filepath.Join(t.TempDir(), "t.sock")
 
 	ln, err := net.Listen("unix", sockPath)
 	if err != nil {
