@@ -21,11 +21,12 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: stable
+          cache: true
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2
 
   test:
     name: Test
@@ -36,6 +37,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: stable
+          cache: true
 
       - name: Run tests
         run: go test -race -cover ./...
@@ -49,6 +51,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: stable
+          cache: true
 
-      - name: Build
+      - name: Build (linux/amd64)
         run: go build ./...
+
+      - name: Verify cross-compile (darwin/arm64)
+        run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ./...

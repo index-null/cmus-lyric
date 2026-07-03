@@ -6,9 +6,16 @@ vars:
 
 tasks:
   default:
-    desc: Build the binary
+    desc: Show available tasks
     cmds:
-      - task: build
+      - task --list
+
+  setup:
+    desc: Install git hooks and verify toolchain
+    cmds:
+      - go tool lefthook install
+      - golangci-lint --version
+      - echo "✅ Git hooks installed. Run 'task check' to verify everything."
 
   build:
     desc: Build for current platform

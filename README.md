@@ -149,6 +149,9 @@ cmus-lyric/
 ## Development
 
 ```bash
+# First time: install git hooks & verify toolchain (one-time)
+task setup
+
 task build          # Build binary to bin/
 task run            # Build and run
 task lint           # Run golangci-lint
@@ -157,7 +160,9 @@ task check          # Full quality check (tidy + lint + test)
 ```
 
 > [!NOTE]
-> Linting requires [golangci-lint](https://golangci-lint.run/). Install with `brew install golangci-lint` or see the [docs](https://golangci-lint.run/welcome/install/).
+> Linting requires [golangci-lint](https://golangci-lint.run/) v2.x. Install with `brew install golangci-lint` or [other methods](https://golangci-lint.run/welcome/install/).
+>
+> `task setup` installs [lefthook](https://github.com/evilmartians/lefthook) git hooks (pre-commit: fmt+lint+build, pre-push: lint+test). Hooks prevent pushing code that would fail CI — they mirror the same checks that run on GitHub.
 
 ## Release
 

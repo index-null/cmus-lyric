@@ -149,6 +149,9 @@ cmus-lyric/
 ## 开发
 
 ```bash
+# 首次使用：安装 git hooks 并校验工具链（仅需一次）
+task setup
+
 task build          # 构建到 bin/
 task run            # 构建并运行
 task lint           # 运行 golangci-lint
@@ -157,7 +160,9 @@ task check          # 完整质量检查（tidy + lint + test）
 ```
 
 > [!NOTE]
-> Lint 需要安装 [golangci-lint](https://golangci-lint.run/)：`brew install golangci-lint`
+> Lint 需要安装 [golangci-lint](https://golangci-lint.run/) v2.x：`brew install golangci-lint` 或参考[其他安装方式](https://golangci-lint.run/welcome/install/)。
+>
+> `task setup` 会自动安装 [lefthook](https://github.com/evilmartians/lefthook) git hooks（pre-commit: fmt+lint+build，pre-push: lint+test）。hooks 会拦截不符合 CI 要求的代码提交，check 内容与 GitHub CI 完全一致。
 
 ## 发布
 

@@ -8,8 +8,8 @@ Thanks for your interest in contributing! This guide will help you get started.
 
 - [Go](https://go.dev/) 1.26+
 - [Task](https://taskfile.dev/) (task runner)
-- [golangci-lint](https://golangci-lint.run/)
-- [lefthook](https://github.com/evilmartians/lefthook) (git hooks)
+- [golangci-lint](https://golangci-lint.run/) v2.x
+- [lefthook](https://github.com/evilmartians/lefthook) (git hooks, managed via Go tool)
 - A running [cmus](https://cmus.github.io/) instance for testing
 
 ### Getting Started
@@ -18,8 +18,8 @@ Thanks for your interest in contributing! This guide will help you get started.
 git clone https://github.com/index-null/cmus-lyric.git
 cd cmus-lyric
 
-# Install git hooks
-lefthook install
+# One-time setup: install git hooks & verify toolchain
+task setup
 
 # Build
 task build
@@ -28,9 +28,13 @@ task build
 task run
 ```
 
+> [!IMPORTANT]
+> **`task setup` installs git hooks (pre-commit + pre-push).** Without this step, quality checks won't run locally and you'll only find issues in CI. It's a one-time operation — hooks persist after `git clone`.
+
 ### Available Tasks
 
 ```bash
+task setup    # Install git hooks & verify toolchain
 task build    # Build binary to bin/
 task run      # Build and run
 task lint     # Run golangci-lint
@@ -54,6 +58,17 @@ task clean    # Remove build artifacts
    ```
 
 4. Push and open a Pull Request against `master`.
+
+## Quality Gates
+
+| Gate | When | What |
+|------|------|------|
+| **pre-commit** (local) | `git commit` | `golangci-lint fmt` + `lint` + `go build` |
+| **pre-push** (local) | `git push` | `golangci-lint` + `go test -race -cover` |
+| **CI** (GitHub) | PR & push to master | lint + test + build (parallel, must all pass) |
+
+> [!NOTE]
+> CI uses the **same** checks as local hooks, with pinned `golangci-lint v2` to avoid version drift. If hooks pass locally, CI should pass too. CI is the final gate — PRs cannot merge unless all checks are green.
 
 ## Branch Naming
 
