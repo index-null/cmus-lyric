@@ -48,6 +48,11 @@ tasks:
     cmds:
       - go mod tidy
 
+  lefthook:
+    desc: Install lefthook git hooks
+    cmds:
+      - go tool lefthook install
+
   check:
     desc: Run all quality checks
     cmds:
