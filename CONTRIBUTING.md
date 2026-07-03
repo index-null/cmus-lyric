@@ -68,7 +68,7 @@ task clean    # Remove build artifacts
 | **CI** (GitHub) | PR & push to master | lint + test + build (parallel, must all pass) |
 
 > [!NOTE]
-> CI uses the **same** checks as local hooks, with pinned `golangci-lint v2` to avoid version drift. If hooks pass locally, CI should pass too. CI is the final gate — PRs cannot merge unless all checks are green.
+> CI uses `golangci-lint v2` (latest minor — must track Go 1.26 releases). Local `golangci-lint v2.x` will match because the config format (`version: "2"`) is compatible across the entire v2 line.
 
 ## Branch Naming
 
