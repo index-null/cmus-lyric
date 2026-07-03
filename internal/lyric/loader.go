@@ -227,6 +227,24 @@ func loadEmbedded(path string) []Line {
 	return BuildLines(lines, nil)
 }
 
+func DeleteLocalLyrics(file, title string) {
+	dir, name, ok := util.SplitPath(file)
+	if !ok {
+		return
+	}
+
+	bases := []string{dir + "/" + name}
+	if len(title) > 0 && title != name {
+		bases = append(bases, dir+"/"+title)
+	}
+
+	for _, b := range bases {
+		for _, ext := range []string{".lyric", ".lrc", ".t.lyric", ".t.lrc"} {
+			os.Remove(b + ext)
+		}
+	}
+}
+
 func SaveToLocal(file, title, lrc, tlyric string) error {
 	dir, name, ok := util.SplitPath(file)
 	if !ok {

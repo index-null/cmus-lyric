@@ -94,6 +94,12 @@ func SaveCoverToCache(artist, title string, data []byte) error {
 	return os.WriteFile(CacheCoverPath(artist, title), data, 0644)
 }
 
+func DeleteCache(artist, title string) {
+	os.Remove(CachePath(artist, title))
+	os.Remove(CacheTransPath(artist, title))
+	os.Remove(CacheCoverPath(artist, title))
+}
+
 func splitLines(data []byte) []string {
 	return splitLinesStr(string(data))
 }

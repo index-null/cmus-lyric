@@ -103,6 +103,7 @@ lyrics
 | `q` `Ctrl+C` | Quit           |
 | `?`          | Toggle help    |
 | `d`          | Toggle debug   |
+| `r`          | Refetch lyrics |
 
 ### How lyrics are resolved
 

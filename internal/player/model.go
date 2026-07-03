@@ -70,6 +70,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "d":
 			m.showDebug = !m.showDebug
 			return m, nil
+		case "r":
+			return m.refetch()
 		}
 
 	case tea.WindowSizeMsg:
@@ -120,6 +122,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m Model) refetch() (tea.Model, tea.Cmd) {
+	lyric.DeleteLocalLyrics(m.track.File, m.track.Title)
+	lyric.DeleteCache(m.track.Artist, m.track.Title)
+
+	m.lyrics = nil
+	m.curFile = ""
+	m.lyricSource = "refetching"
+	m.fetchingMsg = "refetching lyrics..."
+	m.fetching = true
+	m.errMsg = ""
+
+	file := m.track.File
+	dt := m.track.Duration
+	artist := m.track.Artist
+	title := m.track.Title
+	cmd := func() tea.Msg {
+		lrc, tlyric, err := lyric.FetchContent(file, dt, artist, title)
+		return fetchDoneMsg{
+			file:   file,
+			artist: artist,
+			title:  title,
+			lrc:    lrc,
+			tlyric: tlyric,
+			err:    err,
+		}
+	}
+	return m, cmd
 }
 
 func (m Model) poll() (Model, tea.Cmd) {

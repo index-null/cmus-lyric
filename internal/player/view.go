@@ -284,6 +284,8 @@ func (m Model) renderHelp() string {
 	keys := []struct{ key, desc string }{
 		{"q / Ctrl+C", "quit"},
 		{"?", "toggle help"},
+		{"d", "toggle debug"},
+		{"r", "refetch lyrics"},
 	}
 
 	helpLines := make([]string, 0, len(keys))
