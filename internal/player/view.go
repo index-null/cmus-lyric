@@ -411,7 +411,7 @@ func (m Model) renderDebug() string {
 	}
 
 	// 组装所有内容
-	all := make([]string, 0)
+	all := make([]string, 0, 3+len(metaLines)+3+1+3+len(localLines)+3+len(cacheLines)+2+1)
 	all = append(all, title, divider, "")
 	all = append(all, metaLines...)
 	all = append(all, "", divider, "")

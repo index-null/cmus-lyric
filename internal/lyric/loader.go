@@ -11,9 +11,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/dhowden/tag"
-	"github.com/index-null/cmus-lyric/internal/util"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
+
+	"github.com/index-null/cmus-lyric/internal/util"
 )
 
 type Line struct {
