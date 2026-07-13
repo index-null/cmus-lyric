@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/x/mosaic v0.0.0-20260422141420-a6cbdff8a7e2
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/lucasb-eyer/go-colorful v1.4.0
-	golang.org/x/text v0.38.0
+	golang.org/x/text v0.39.0
 )
 
 require (
@@ -69,7 +69,7 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/image v0.39.0 // indirect
-	golang.org/x/mod v0.36.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
