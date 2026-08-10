@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/mosaic v0.0.0-20260422141420-a6cbdff8a7e2
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
-	github.com/lucasb-eyer/go-colorful v1.4.0
+	github.com/lucasb-eyer/go-colorful v1.4.1
 	golang.org/x/text v0.38.0
 )
 
