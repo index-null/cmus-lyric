@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -32,11 +33,27 @@ func (m Model) View() string {
 
 	sections := make([]string, 0, 3)
 	sections = append(sections, m.renderHeader())
-	sections = append(sections, m.renderLyrics())
+	sections = append(sections, m.renderBody())
 	sections = append(sections, m.renderFooter())
 
 	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
 	return borderStyle.Render(content)
+}
+
+// renderBody 决定中间区域展示什么：候选选择器 / 歌曲信息 / 歌词。
+func (m Model) renderBody() string {
+	if m.picker.active {
+		return m.renderPicker()
+	}
+	if m.showInfo || (m.noLyric && !m.infoDismissed) {
+		return m.renderInfo()
+	}
+	return m.renderLyrics()
+}
+
+// bodyHeight 是中间区域可用的行数。
+func (m Model) bodyHeight() int {
+	return max(m.height-3-3-2, 1)
 }
 
 func (m Model) renderHeader() string {
@@ -47,8 +64,7 @@ func (m Model) renderHeader() string {
 	if m.track.Title != "" {
 		title = m.track.Title
 	} else if m.track.File != "" {
-		_, name, ok := util.SplitPath(m.track.File)
-		if ok {
+		if _, name, ok := util.SplitPath(m.track.File); ok {
 			title = name
 		}
 	}
@@ -94,10 +110,7 @@ func (m Model) renderHeader() string {
 }
 
 func (m Model) renderLyrics() string {
-	headerH := 3
-	footerH := 3
-	borderH := 2
-	availH := max(m.height-headerH-footerH-borderH, 1)
+	availH := m.bodyHeight()
 	w := m.innerWidth()
 	p := m.pal
 
@@ -125,7 +138,7 @@ func (m Model) renderLyrics() string {
 		return centerMsg(fetchStyle.Render(m.fetchingMsg))
 	}
 	if len(m.lyrics) == 0 {
-		return centerMsg(noLyricStyle.Render("no lyrics"))
+		return centerMsg(noLyricStyle.Render("no lyrics — press r to search"))
 	}
 
 	if m.unsynced {
@@ -248,9 +261,15 @@ func (m Model) renderFooter() string {
 	posStr := fmt.Sprintf("%d:%02d", m.track.Position/60, m.track.Position%60)
 	durStr := fmt.Sprintf("%d:%02d", m.track.Duration/60, m.track.Duration%60)
 	timeStr := footerStyle.Render(fmt.Sprintf("  %s / %s", posStr, durStr))
-	helpHint := footerStyle.Render("q: quit  ?: help")
-	spacer := strings.Repeat(" ", max(0, w-lipgloss.Width(timeStr)-lipgloss.Width(helpHint)))
-	statusLine := timeStr + spacer + helpHint
+	sourceStr := ""
+	if m.lyricSource != "" {
+		sourceStr = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(p.Secondary.Hex())).
+			Render("[" + m.lyricSource + "] ")
+	}
+	helpHint := footerStyle.Render("q: quit  r: lyrics  i: info  ?: help")
+	spacer := strings.Repeat(" ", max(0, w-lipgloss.Width(timeStr)-lipgloss.Width(sourceStr)-lipgloss.Width(helpHint)))
+	statusLine := timeStr + spacer + sourceStr + helpHint
 
 	return lipgloss.JoinVertical(lipgloss.Left, divider, bar, statusLine)
 }
@@ -284,8 +303,15 @@ func (m Model) renderHelp() string {
 	keys := []struct{ key, desc string }{
 		{"q / Ctrl+C", "quit"},
 		{"?", "toggle help"},
+		{"i", "toggle track info (bitrate / tags)"},
 		{"d", "toggle debug"},
-		{"r", "refetch lyrics"},
+		{"r", "search every lyric source and pick one"},
+		{"↑/↓  j/k", "move through candidates (or scroll preview)"},
+		{"Tab", "switch focus between list and preview"},
+		{"Enter", "use the highlighted lyric"},
+		{"s", "use it and save next to the audio file"},
+		{"x", "delete the local lyric file"},
+		{"Esc", "close the picker"},
 	}
 
 	helpLines := make([]string, 0, len(keys))
@@ -340,12 +366,19 @@ func (m Model) renderDebug() string {
 		debugKeyStyle.Render("Artist:") + " " + debugValStyle.Render(m.track.Artist),
 		debugKeyStyle.Render("Title:") + " " + debugValStyle.Render(m.track.Title),
 		debugKeyStyle.Render("Album:") + " " + debugValStyle.Render(m.track.Album),
-		debugKeyStyle.Render("Duration:") + " " + debugValStyle.Render(fmt.Sprintf("%d:%02d", m.track.Duration/60, m.track.Duration%60)),
-		debugKeyStyle.Render("Position:") + " " + debugValStyle.Render(fmt.Sprintf("%d:%02d", m.track.Position/60, m.track.Position%60)),
+		debugKeyStyle.Render("Duration:") + " " + debugValStyle.Render(fmtDuration(m.track.Duration)),
+		debugKeyStyle.Render("Position:") + " " + debugValStyle.Render(fmtDuration(m.track.Position)),
 		debugKeyStyle.Render("Status:") + " " + debugValStyle.Render(m.track.Status),
 	}
 
-	// 2. 歌词来源
+	// 2. 音频文件信息（码率 / 格式 / 标签）
+	audioLines := []string{
+		debugKeyStyle.Render("Format:") + " " + debugValStyle.Render(m.info.FormatLabel()),
+		debugKeyStyle.Render("Bitrate:") + " " + debugValStyle.Render(m.info.BitrateLabel()),
+		debugKeyStyle.Render("Size:") + " " + debugValStyle.Render(lyric.HumanSize(m.info.Size)),
+	}
+
+	// 3. 歌词来源
 	sourceStr := m.lyricSource
 	if sourceStr == "" {
 		sourceStr = "none"
@@ -355,65 +388,43 @@ func (m Model) renderDebug() string {
 	}
 	sourceLine := debugKeyStyle.Render("Lyric Source:") + " " + debugValStyle.Render(sourceStr)
 
-	// 3. 本地文件和缓存文件信息
+	// 4. 本地歌词文件（每次都重新查找，绝不沿用上一首歌的路径）
 	localLines := []string{debugKeyStyle.Render("Local File:")}
-	if m.lyricFile != "" && m.lyricSource == "local" {
-		if content, err := os.ReadFile(m.lyricFile); err == nil {
-			localLines[0] += " " + debugValStyle.Render(m.lyricFile+" (exists)")
-			// 预览前5行
-			lines := strings.SplitN(string(content), "\n", 6)
-			for i, l := range lines {
-				if i >= 5 {
-					break
-				}
-				localLines = append(localLines, "  "+debugValStyle.Render(l))
-			}
-		} else {
-			localLines[0] += " " + debugValStyle.Render(m.lyricFile+" (not found)")
-		}
+	if m.lyricSource == "embedded" {
+		localLines[0] += " " + debugValStyle.Render("(embedded in the audio file)")
+	} else if path, ok := lyric.FindLocalLyric(m.track.File, m.track.Title); ok {
+		localLines[0] += " " + debugValStyle.Render(path+" (exists)")
+		localLines = append(localLines, previewFile(path, debugValStyle)...)
 	} else {
-		// 检查可能的本地文件路径
-		if dir, name, ok := util.SplitPath(m.track.File); ok {
-			base := dir + "/" + name
-			found := false
-			for _, ext := range []string{".lyric", ".lrc"} {
-				for _, b := range []string{base, dir + "/" + m.track.Title} {
-					if _, err := os.Stat(b + ext); err == nil {
-						localLines[0] += " " + debugValStyle.Render(b+ext+" (exists)")
-						found = true
-						break
-					}
-				}
-				if found {
-					break
-				}
-			}
-			if !found {
-				localLines[0] += " " + debugValStyle.Render("(not found)")
-			}
-		}
+		localLines[0] += " " + debugValStyle.Render("(not found)")
 	}
 
+	// 5. 缓存文件（键包含时长，避免同名不同版本串味）
+	cachePath := lyric.CachePath(m.track.Artist, m.track.Title, m.track.Duration)
 	cacheLines := []string{debugKeyStyle.Render("Cache File:")}
-	cachePath := lyric.CachePath(m.track.Artist, m.track.Title)
-	if content, err := os.ReadFile(cachePath); err == nil {
+	if _, err := os.Stat(cachePath); err == nil {
 		cacheLines[0] += " " + debugValStyle.Render(cachePath+" (exists)")
-		// 预览前5行
-		lines := strings.SplitN(string(content), "\n", 6)
-		for i, l := range lines {
-			if i >= 5 {
-				break
+		if entry, ok := lyric.LoadCache(m.track.Artist, m.track.Title, m.track.Duration); ok {
+			if entry.Source != "" {
+				cacheLines = append(cacheLines, "  "+debugValStyle.Render("from "+entry.Source))
 			}
-			cacheLines = append(cacheLines, "  "+debugValStyle.Render(l))
+			if !entry.SavedAt.IsZero() {
+				cacheLines = append(cacheLines, "  "+debugValStyle.Render("saved "+entry.SavedAt.Format(time.DateTime)))
+			}
+			if entry.Instrumental {
+				cacheLines = append(cacheLines, "  "+debugValStyle.Render("marked instrumental"))
+			}
 		}
+		cacheLines = append(cacheLines, previewFile(cachePath, debugValStyle)...)
 	} else {
 		cacheLines[0] += " " + debugValStyle.Render(cachePath+" (not found)")
 	}
 
-	// 组装所有内容
-	all := make([]string, 0, 3+len(metaLines)+3+1+3+len(localLines)+3+len(cacheLines)+2+1)
+	all := make([]string, 0, 16)
 	all = append(all, title, divider, "")
 	all = append(all, metaLines...)
+	all = append(all, "", divider, "")
+	all = append(all, audioLines...)
 	all = append(all, "", divider, "")
 	all = append(all, sourceLine)
 	all = append(all, "", divider, "")
@@ -425,4 +436,29 @@ func (m Model) renderDebug() string {
 
 	content := lipgloss.JoinVertical(lipgloss.Left, all...)
 	return borderStyle.Render(content)
+}
+
+// previewFile 预览歌词文件的前若干行。
+func previewFile(path string, style lipgloss.Style) []string {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	lines := make([]string, 0, 5)
+	for i, l := range splitContentLines(string(content)) {
+		if i >= 5 {
+			break
+		}
+		lines = append(lines, "  "+style.Render(l))
+	}
+	return lines
+}
+
+func splitContentLines(content string) []string {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	return strings.SplitN(content, "\n", 6)
+}
+
+func fmtDuration(seconds int) string {
+	return fmt.Sprintf("%d:%02d", seconds/60, seconds%60)
 }

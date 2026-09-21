@@ -2,12 +2,25 @@ package lyric
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 )
 
+// cacheDirOverride 让测试可以把缓存重定向到临时目录，避免污染真实缓存。
+var cacheDirOverride string
+
+// SetCacheDir 覆盖缓存目录，传空字符串恢复默认位置。
+func SetCacheDir(dir string) { cacheDirOverride = dir }
+
+// CacheDir 返回歌词缓存目录。
 func CacheDir() string {
+	if cacheDirOverride != "" {
+		return cacheDirOverride
+	}
 	if dir, err := os.UserCacheDir(); err == nil {
 		return filepath.Join(dir, "cmus-lyric")
 	}
@@ -15,93 +28,134 @@ func CacheDir() string {
 	return filepath.Join(home, ".cache", "cmus-lyric")
 }
 
-func CacheKey(artist, title string) string {
-	h := sha256.Sum256([]byte(artist + "\x00" + title))
+// Entry 是一份缓存歌词及其来源信息。
+type Entry struct {
+	Artist       string    `json:"artist"`
+	Title        string    `json:"title"`
+	Album        string    `json:"album"`
+	Duration     int       `json:"duration"`
+	Source       string    `json:"source"`
+	SavedAt      time.Time `json:"saved_at"`
+	Instrumental bool      `json:"instrumental"`
+	LRC          string    `json:"-"`
+	Trans        string    `json:"-"`
+}
+
+// CacheKey 计算缓存键。时长参与计算，避免同一曲名的不同版本共用一份缓存。
+func CacheKey(artist, title string, duration int) string {
+	h := sha256.Sum256([]byte(artist + "\x00" + title + "\x00" + strconv.Itoa(duration)))
 	return fmt.Sprintf("%x", h[:12])
 }
 
-func CachePath(artist, title string) string {
-	return filepath.Join(CacheDir(), CacheKey(artist, title)+".lrc")
+// CachePath 返回主歌词缓存文件。
+func CachePath(artist, title string, duration int) string {
+	return filepath.Join(CacheDir(), CacheKey(artist, title, duration)+".lrc")
 }
 
-func CacheTransPath(artist, title string) string {
-	return filepath.Join(CacheDir(), CacheKey(artist, title)+".t.lrc")
+// CacheTransPath 返回翻译歌词缓存文件。
+func CacheTransPath(artist, title string, duration int) string {
+	return filepath.Join(CacheDir(), CacheKey(artist, title, duration)+".t.lrc")
 }
 
-func LoadFromCache(artist, title string) ([]Line, string, string) {
-	path := CachePath(artist, title)
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, "", ""
-	}
-
-	content = ToUTF8(content)
-	mainLines := splitLines(content)
-
-	var tlines []string
-	var tcontent string
-	tpath := CacheTransPath(artist, title)
-	if tc, err := os.ReadFile(tpath); err == nil {
-		tc = ToUTF8(tc)
-		tcontent = string(tc)
-		tlines = splitLines(tc)
-	}
-
-	if !hasTimestampLines(string(content)) {
-		// 无时间戳 → 返回原始内容让调用方处理未同步歌词
-		return nil, string(content), tcontent
-	}
-
-	return BuildLines(mainLines, tlines), string(content), tcontent
+// CacheMetaPath 返回缓存元信息文件。
+func CacheMetaPath(artist, title string, duration int) string {
+	return filepath.Join(CacheDir(), CacheKey(artist, title, duration)+".json")
 }
 
-func SaveToCache(artist, title, lrc, tlyric string) error {
+// CacheCoverPath 返回封面缓存文件。
+func CacheCoverPath(artist, title string, duration int) string {
+	return filepath.Join(CacheDir(), CacheKey(artist, title, duration)+".cover")
+}
+
+// Lines 把缓存内容解析成可渲染的歌词行。
+func (e Entry) Lines() []Line {
+	if e.LRC == "" {
+		return nil
+	}
+	return Candidate{LRC: e.LRC, Trans: e.Trans}.Lines()
+}
+
+// SaveCache 写入歌词、翻译与来源元信息。
+func SaveCache(e Entry) error {
 	dir := CacheDir()
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	path := CachePath(artist, title)
-	if err := Save(path, lrc); err != nil {
+	if err := Save(CachePath(e.Artist, e.Title, e.Duration), e.LRC); err != nil {
 		return err
 	}
 
-	if len(tlyric) > 0 {
-		tpath := CacheTransPath(artist, title)
-		_ = Save(tpath, tlyric)
+	if len(e.Trans) > 0 {
+		if err := Save(CacheTransPath(e.Artist, e.Title, e.Duration), e.Trans); err != nil {
+			return err
+		}
 	}
 
-	return nil
+	if e.SavedAt.IsZero() {
+		e.SavedAt = time.Now()
+	}
+	meta, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(CacheMetaPath(e.Artist, e.Title, e.Duration), meta, 0644)
 }
 
-func CacheCoverPath(artist, title string) string {
-	return filepath.Join(CacheDir(), CacheKey(artist, title)+".cover")
+// LoadCache 读取缓存；不存在则返回 false。
+func LoadCache(artist, title string, duration int) (Entry, bool) {
+	content, err := os.ReadFile(CachePath(artist, title, duration))
+	if err != nil {
+		return Entry{}, false
+	}
+
+	e := Entry{
+		Artist:   artist,
+		Title:    title,
+		Duration: duration,
+		LRC:      string(ToUTF8(content)),
+	}
+
+	if meta, err := os.ReadFile(CacheMetaPath(artist, title, duration)); err == nil {
+		var parsed Entry
+		if json.Unmarshal(meta, &parsed) == nil {
+			e.Album = parsed.Album
+			e.Source = parsed.Source
+			e.SavedAt = parsed.SavedAt
+			e.Instrumental = parsed.Instrumental
+		}
+	}
+
+	if trans, err := os.ReadFile(CacheTransPath(artist, title, duration)); err == nil {
+		e.Trans = string(ToUTF8(trans))
+	}
+
+	return e, true
 }
 
-func LoadCoverFromCache(artist, title string) []byte {
-	data, err := os.ReadFile(CacheCoverPath(artist, title))
+// DeleteCache 删除某个条目产生的所有文件。
+func DeleteCache(artist, title string, duration int) {
+	os.Remove(CachePath(artist, title, duration))
+	os.Remove(CacheTransPath(artist, title, duration))
+	os.Remove(CacheMetaPath(artist, title, duration))
+	os.Remove(CacheCoverPath(artist, title, duration))
+}
+
+// LoadCoverFromCache 读取缓存封面。
+func LoadCoverFromCache(artist, title string, duration int) []byte {
+	data, err := os.ReadFile(CacheCoverPath(artist, title, duration))
 	if err != nil {
 		return nil
 	}
 	return data
 }
 
-func SaveCoverToCache(artist, title string, data []byte) error {
-	dir := CacheDir()
-	if err := os.MkdirAll(dir, 0755); err != nil {
+// SaveCoverToCache 写入缓存封面。
+func SaveCoverToCache(artist, title string, duration int, data []byte) error {
+	if err := os.MkdirAll(CacheDir(), 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(CacheCoverPath(artist, title), data, 0644)
-}
-
-func DeleteCache(artist, title string) {
-	os.Remove(CachePath(artist, title))
-	os.Remove(CacheTransPath(artist, title))
-	os.Remove(CacheCoverPath(artist, title))
-}
-
-func splitLines(data []byte) []string {
-	return splitLinesStr(string(data))
+	return os.WriteFile(CacheCoverPath(artist, title, duration), data, 0644)
 }
 
 func splitLinesStr(s string) []string {

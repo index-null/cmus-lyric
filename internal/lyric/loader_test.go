@@ -272,6 +272,136 @@ func TestLoad_InvalidPath(t *testing.T) {
 	}
 }
 
+func TestBuildLines_AppliesOffset(t *testing.T) {
+	// [offset:-500] 表示整体提前 500ms（-50 厘秒）
+	lines := []string{"[offset:-500]", "[00:05.00]Hello"}
+	result := BuildLines(lines, nil)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(result))
+	}
+	if result[0].TimeCS != 450 {
+		t.Errorf("expected 450cs after offset, got %d", result[0].TimeCS)
+	}
+}
+
+func TestBuildLines_PositiveOffset(t *testing.T) {
+	result := BuildLines([]string{"[offset:200]", "[00:05.00]Hello"}, nil)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(result))
+	}
+	if result[0].TimeCS != 520 {
+		t.Errorf("expected 520cs, got %d", result[0].TimeCS)
+	}
+}
+
+func TestLocalLyricPaths_PrefersExactStem(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "01-track.mp3")
+	paths := LocalLyricPaths(file, "Real Title")
+
+	want := []string{
+		filepath.Join(dir, "01-track.lyric"),
+		filepath.Join(dir, "01-track.lrc"),
+		filepath.Join(dir, "Real Title.lyric"),
+		filepath.Join(dir, "Real Title.lrc"),
+	}
+	if len(paths) != len(want) {
+		t.Fatalf("expected %d paths, got %d: %v", len(want), len(paths), paths)
+	}
+	for i := range want {
+		if paths[i] != want[i] {
+			t.Errorf("paths[%d] = %q, want %q", i, paths[i], want[i])
+		}
+	}
+}
+
+func TestLocalLyricPaths_NoDuplicateStem(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "Same.mp3")
+	paths := LocalLyricPaths(file, "Same")
+	if len(paths) != 2 {
+		t.Errorf("expected 2 paths when title equals the file stem, got %v", paths)
+	}
+}
+
+func TestFindLocalLyric_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "song.mp3")
+	if err := os.WriteFile(file, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if path, ok := FindLocalLyric(file, ""); ok {
+		t.Errorf("expected no local lyric, got %q", path)
+	}
+}
+
+func TestFindLocalLyric_FindsTitleBasedFile(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "01-track.mp3")
+	lrc := filepath.Join(dir, "Real Title.lrc")
+	os.WriteFile(file, []byte("x"), 0644)
+	os.WriteFile(lrc, []byte("[00:01.00]hi\n"), 0644)
+
+	got, ok := FindLocalLyric(file, "Real Title")
+	if !ok {
+		t.Fatal("expected to find the title-based lyric file")
+	}
+	if got != lrc {
+		t.Errorf("got %q, want %q", got, lrc)
+	}
+}
+
+// TestLoad_PlaceholderIsIgnored：本地残留的「纯音乐，请欣赏」不能被当成歌词展示。
+func TestLoad_PlaceholderIsIgnored(t *testing.T) {
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "song.mp3")
+	lrcPath := filepath.Join(dir, "song.lrc")
+
+	os.WriteFile(audioPath, []byte("fake"), 0644)
+	os.WriteFile(lrcPath, []byte("［00:05.00］纯音乐，请欣赏\n"), 0644)
+
+	if got := Load(audioPath, ""); got != nil {
+		t.Errorf("placeholder lyrics must be ignored, got %+v", got)
+	}
+}
+
+func TestLoad_FullWidthBrackets(t *testing.T) {
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "song.mp3")
+	lrcPath := filepath.Join(dir, "song.lrc")
+
+	os.WriteFile(audioPath, []byte("fake"), 0644)
+	os.WriteFile(lrcPath, []byte("［00:05.00］你好\n［00:10.00］世界\n"), 0644)
+
+	result := Load(audioPath, "")
+	if len(result) != 2 {
+		t.Fatalf("expected 2 lines, got %d: %+v", len(result), result)
+	}
+	if result[0].Text != "你好" || result[1].Text != "世界" {
+		t.Errorf("unexpected lines: %+v", result)
+	}
+}
+
+func TestLoadLocal_ReportsSource(t *testing.T) {
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "song.mp3")
+	lrcPath := filepath.Join(dir, "song.lrc")
+
+	os.WriteFile(audioPath, []byte("fake"), 0644)
+	os.WriteFile(lrcPath, []byte("[00:01.00]hi\n"), 0644)
+
+	got := LoadLocal(audioPath, "")
+	if got.Source != "local" {
+		t.Errorf("source: got %q, want local", got.Source)
+	}
+	if got.Path != lrcPath {
+		t.Errorf("path: got %q, want %q", got.Path, lrcPath)
+	}
+	if len(got.Lines) != 1 {
+		t.Errorf("expected 1 line, got %d", len(got.Lines))
+	}
+}
+
 func TestLoadEmbedded_NonAudioFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "fake.mp3")

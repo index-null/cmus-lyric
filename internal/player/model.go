@@ -1,7 +1,7 @@
 package player
 
 import (
-	"os"
+	"context"
 	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -12,34 +12,49 @@ import (
 	"github.com/index-null/cmus-lyric/internal/util"
 )
 
+// searchTimeout 是单次歌词检索的超时时间。
+const searchTimeout = 12 * time.Second
+
 type Model struct {
-	track       cmus.Track
-	lyrics      []lyric.Line
-	curFile     string
-	curLineIdx  int
-	progress    progress.Model
-	pal         palette
-	width       int
-	height      int
-	showHelp    bool
-	showDebug   bool
-	errMsg      string
-	fetchingMsg string
-	fetching    bool
-	lyricSource string
-	lyricFile   string
-	unsynced    bool
+	track      cmus.Track
+	lyrics     []lyric.Line
+	curFile    string
+	curLineIdx int
+	progress   progress.Model
+	pal        palette
+	width      int
+	height     int
+	showHelp   bool
+	showDebug  bool
+	showInfo   bool
+	// infoDismissed 让用户可以把「无歌词」时自动弹出的信息面板关掉。
+	infoDismissed bool
+	errMsg        string
+	fetchingMsg   string
+	fetching      bool
+	lyricSource   string
+	lyricFile     string
+	unsynced      bool
+	noLyric       bool
+	info          lyric.AudioInfo
+	infoErr       error
+	picker        pickerState
 }
 
 type tickMsg struct{}
 
-type fetchDoneMsg struct {
-	file   string
-	artist string
-	title  string
-	lrc    string
-	tlyric string
-	err    error
+// autoFetchMsg 是切歌时自动检索的结果。
+type autoFetchMsg struct {
+	file      string
+	candidate lyric.Candidate
+	found     bool
+}
+
+// sourceResultMsg 是单个歌词来源的检索结果。
+type sourceResultMsg struct {
+	source     string
+	candidates []lyric.Candidate
+	err        error
 }
 
 func NewModel() Model {
@@ -61,6 +76,9 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.picker.active {
+			return m.updatePicker(msg)
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -70,8 +88,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "d":
 			m.showDebug = !m.showDebug
 			return m, nil
+		case "i":
+			if m.noLyric {
+				m.infoDismissed = !m.infoDismissed
+			} else {
+				m.showInfo = !m.showInfo
+			}
+			return m, nil
 		case "r":
-			return m.refetch()
+			return m.startSearch()
 		}
 
 	case tea.WindowSizeMsg:
@@ -87,163 +112,161 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return tickMsg{}
 		}))
 
-	case fetchDoneMsg:
-		m.fetching = false
-		m.fetchingMsg = ""
-		m.unsynced = false
-		if msg.file != m.curFile {
-			return m, nil
-		}
-		if msg.err != nil {
-			m.errMsg = "fetch failed: " + msg.err.Error()
-			m.lyrics = nil
-			m.lyricSource = "fetch failed"
-			return m, nil
-		}
-		if len(msg.lrc) > 0 {
-			_ = lyric.SaveToCache(msg.artist, msg.title, msg.lrc, msg.tlyric)
-		}
-		m.lyrics = lyric.Load(m.track.File, m.track.Title)
-		if m.lyrics == nil {
-			m.lyrics, _, _ = lyric.LoadFromCache(m.track.Artist, m.track.Title)
-		}
-		if m.lyrics == nil && len(msg.lrc) > 0 {
-			// 获取到的内容无时间戳 -> 完整展示，无进度高亮
-			m.lyrics = lyric.BuildUnsyncedLines(msg.lrc)
-			m.unsynced = true
-		}
-		m.lyricSource = "fetched"
-		if m.unsynced {
-			m.lyricSource = "fetched (unsynced)"
-		}
-		m.lyricFile = lyric.CachePath(msg.artist, msg.title)
-		m.curLineIdx = -1
-		return m, nil
+	case autoFetchMsg:
+		return m.handleAutoFetch(msg), nil
+
+	case sourceResultMsg:
+		return m.applySourceResult(msg), nil
 	}
 
 	return m, nil
 }
 
-func (m Model) refetch() (tea.Model, tea.Cmd) {
-	lyric.DeleteLocalLyrics(m.track.File, m.track.Title)
-	lyric.DeleteCache(m.track.Artist, m.track.Title)
-
-	m.lyrics = nil
-	m.curFile = ""
-	m.lyricSource = "refetching"
-	m.fetchingMsg = "refetching lyrics..."
-	m.fetching = true
-	m.errMsg = ""
-
-	file := m.track.File
-	dt := m.track.Duration
-	artist := m.track.Artist
-	title := m.track.Title
-	cmd := func() tea.Msg {
-		lrc, tlyric, err := lyric.FetchContent(file, dt, artist, title)
-		return fetchDoneMsg{
-			file:   file,
-			artist: artist,
-			title:  title,
-			lrc:    lrc,
-			tlyric: tlyric,
-			err:    err,
-		}
-	}
-	return m, cmd
+func (m Model) poll() (Model, tea.Cmd) {
+	return m.applyTrack(cmus.Remote())
 }
 
-func (m Model) poll() (Model, tea.Cmd) {
-	track := cmus.Remote()
+// applyTrack 把 cmus 的当前状态应用到模型上。
+func (m Model) applyTrack(track cmus.Track) (Model, tea.Cmd) {
 	m.track = track
 
 	if track.Status != "playing" {
 		m.errMsg = ""
 		m.fetchingMsg = ""
+		m.updateCurrentLine()
 		return m, nil
 	}
 
-	if track.File != m.curFile {
-		m.curFile = track.File
-		m.errMsg = ""
-		m.fetchingMsg = ""
-		m.fetching = false
-
-		seed := track.Artist + " - " + track.Title
-		if seed == " - " {
-			seed = track.File
-		}
-		m.pal = generatePalette(seed)
-		m.progress = progress.New(m.pal.progressOpts()...)
-		m.progress.Width = max(m.width-6, 0)
-
-		lyrics := lyric.Load(track.File, track.Title)
-		m.unsynced = false
-		if lyrics != nil {
-			m.lyricSource = "local"
-			if dir, name, ok := util.SplitPath(track.File); ok {
-				base := dir + "/" + name
-				bases := []string{base}
-				if len(track.Title) > 0 && track.Title != name {
-					bases = append(bases, dir+"/"+track.Title)
-				}
-				for _, b := range bases {
-					for _, ext := range []string{".lyric", ".lrc"} {
-						if _, err := os.Stat(b + ext); err == nil {
-							m.lyricFile = b + ext
-							break
-						}
-					}
-					if m.lyricFile != "" {
-						break
-					}
-				}
-			}
-		} else {
-			cachedLyrics, cachedLrc, cachedTLyric := lyric.LoadFromCache(track.Artist, track.Title)
-			if cachedLyrics != nil {
-				lyrics = cachedLyrics
-				m.lyricSource = "cache"
-				m.lyricFile = lyric.CachePath(track.Artist, track.Title)
-				// 回写缓存内容到本地文件
-				_ = lyric.SaveToLocal(track.File, track.Title, cachedLrc, cachedTLyric)
-			} else if cachedLrc != "" {
-				// 缓存有无时间戳的纯文本 -> 完整展示，无进度高亮
-				lyrics = lyric.BuildUnsyncedLines(cachedLrc)
-				m.unsynced = true
-				m.lyricSource = "cache (unsynced)"
-				m.lyricFile = lyric.CachePath(track.Artist, track.Title)
-			}
-		}
-		if lyrics == nil && !m.fetching {
-			m.fetching = true
-			m.fetchingMsg = "fetching lyrics..."
-			m.lyricSource = "fetching"
-			file := track.File
-			dt := track.Duration
-			artist := track.Artist
-			title := track.Title
-			cmd := func() tea.Msg {
-				lrc, tlyric, err := lyric.FetchContent(file, dt, artist, title)
-				return fetchDoneMsg{
-					file:   file,
-					artist: artist,
-					title:  title,
-					lrc:    lrc,
-					tlyric: tlyric,
-					err:    err,
-				}
-			}
-			return m, cmd
-		}
-		m.lyrics = lyrics
-		m.curLineIdx = -1
+	if track.File == m.curFile {
+		m.updateCurrentLine()
+		return m, nil
 	}
 
-	if m.lyrics != nil {
-		posCS := track.Position*100 + 180
-		m.curLineIdx = lyric.FindCurrentLine(m.lyrics, posCS)
+	return m.switchTrack(track)
+}
+
+func (m *Model) updateCurrentLine() {
+	if m.lyrics == nil {
+		return
+	}
+	m.curLineIdx = lyric.FindCurrentLine(m.lyrics, m.track.Position*100+180)
+}
+
+// switchTrack 切换曲目：清空上一首歌的全部残留状态，再按
+// 本地歌词 → 缓存 → 联网检索 的顺序取歌词。
+func (m Model) switchTrack(track cmus.Track) (Model, tea.Cmd) {
+	m.curFile = track.File
+	m.lyrics = nil
+	m.curLineIdx = -1
+	m.lyricFile = ""
+	m.lyricSource = ""
+	m.unsynced = false
+	m.noLyric = false
+	m.infoDismissed = false
+	m.errMsg = ""
+	m.fetchingMsg = ""
+	m.fetching = false
+	m.picker = pickerState{}
+	m.info, m.infoErr = lyric.Probe(track.File, track.Duration)
+
+	seed := track.Artist + " - " + track.Title
+	if seed == " - " {
+		seed = track.File
+	}
+	m.pal = generatePalette(seed)
+	m.progress = progress.New(m.pal.progressOpts()...)
+	m.progress.Width = max(m.width-6, 0)
+
+	if res := lyric.LoadLocal(track.File, track.Title); len(res.Lines) > 0 {
+		m.lyrics = res.Lines
+		m.lyricSource = res.Source
+		m.lyricFile = res.Path
+		return m, nil
 	}
 
-	return m, nil
+	if entry, ok := lyric.LoadCache(track.Artist, track.Title, track.Duration); ok {
+		if entry.Instrumental || lyric.IsPlaceholder(entry.LRC) {
+			m.noLyric = true
+			m.lyricSource = "cache · instrumental"
+			return m, nil
+		}
+		if lines := entry.Lines(); len(lines) > 0 {
+			m.lyrics = lines
+			m.unsynced = !lyric.HasTimestamps(entry.LRC)
+			m.lyricSource = "cache · " + entry.Source
+			m.lyricFile = lyric.CachePath(track.Artist, track.Title, track.Duration)
+			return m, nil
+		}
+	}
+
+	m.fetching = true
+	m.fetchingMsg = "searching lyrics..."
+	m.lyricSource = "fetching"
+	return m, autoFetchCmd(track)
+}
+
+// queryFor 构造检索参数；标签缺失时退回文件名。
+func queryFor(track cmus.Track) lyric.Query {
+	title := track.Title
+	if title == "" {
+		if _, name, ok := util.SplitPath(track.File); ok {
+			title = name
+		}
+	}
+	return lyric.Query{
+		Title:    title,
+		Artist:   track.Artist,
+		Album:    track.Album,
+		Duration: track.Duration,
+	}
+}
+
+func autoFetchCmd(track cmus.Track) tea.Cmd {
+	q := queryFor(track)
+	file := track.File
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), searchTimeout)
+		defer cancel()
+
+		best, ok := lyric.FetchBest(ctx, q)
+		return autoFetchMsg{file: file, candidate: best, found: ok}
+	}
+}
+
+// handleAutoFetch 应用自动检索的结果；没找到时进入「无歌词」状态而不是报错。
+func (m Model) handleAutoFetch(msg autoFetchMsg) Model {
+	m.fetching = false
+	m.fetchingMsg = ""
+
+	if msg.file != m.curFile {
+		return m
+	}
+
+	if !msg.found {
+		m.lyrics = nil
+		m.noLyric = true
+		m.lyricSource = "no lyrics"
+		return m
+	}
+
+	_ = lyric.SaveCache(lyric.Entry{
+		Artist:       m.track.Artist,
+		Title:        m.track.Title,
+		Album:        msg.candidate.Album,
+		Duration:     m.track.Duration,
+		Source:       msg.candidate.Source,
+		SavedAt:      time.Now(),
+		Instrumental: msg.candidate.Instrumental,
+		LRC:          msg.candidate.LRC,
+		Trans:        msg.candidate.Trans,
+	})
+
+	m.lyrics = msg.candidate.Lines()
+	m.unsynced = !msg.candidate.Synced
+	m.noLyric = len(m.lyrics) == 0
+	m.lyricSource = msg.candidate.Source
+	m.lyricFile = lyric.CachePath(m.track.Artist, m.track.Title, m.track.Duration)
+	m.curLineIdx = -1
+
+	return m
 }

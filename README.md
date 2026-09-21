@@ -31,12 +31,16 @@ A terminal-based synced lyrics viewer for [cmus](https://cmus.github.io/), built
 **Features:**
 
 - Real-time synced lyric scrolling with highlight
-- Auto-fetch from LRCLIB and Netease Music (non-blocking)
+- Auto-fetch from four sources **in parallel**: LRCLIB, Netease Music, Kugou, lyrics.ovh (non-blocking)
+- Lyric picker (`r`): search every source at once, preview each candidate and pick the right one
+- Track info panel (`i`): bitrate, format, file size and tags when a track has no lyrics
+- Instrumental / placeholder detection — `纯音乐，请欣赏` style placeholders are never shown as lyrics
 - Translation lyrics support (`.t.lrc` / `.t.lyric` side-by-side)
 - Embedded lyrics extraction from audio files (ID3/Vorbis Comment)
 - Album cover display (`lyrics cover`)
-- Lyrics caching (location determined by `os.UserCacheDir()`, e.g. `~/Library/Caches/cmus-lyric/` on macOS, `~/.cache/cmus-lyric/` on Linux) for offline and read-only directories
-- Duration tolerance (±2s) for better lyric matching
+- Lyrics caching keyed by artist + title + **duration**, so different versions of a song never share a cache entry (location determined by `os.UserCacheDir()`, e.g. `~/Library/Caches/cmus-lyric/` on macOS, `~/.cache/cmus-lyric/` on Linux)
+- Duration-aware scoring (±30s tolerance) plus title/artist similarity ranking
+- Full-width bracket (`［00:05.00］`) and GBK/UTF-8 normalization
 - Unix socket IPC for low-overhead cmus communication
 - GBK/UTF-8 auto-detection
 - Progress bar and playback status
@@ -98,21 +102,36 @@ Start cmus and play a song, then in another terminal:
 lyrics
 ```
 
-| Key          | Action         |
-| ------------ | -------------- |
-| `q` `Ctrl+C` | Quit           |
-| `?`          | Toggle help    |
-| `d`          | Toggle debug   |
-| `r`          | Refetch lyrics |
+| Key          | Action                                            |
+| ------------ | ------------------------------------------------- |
+| `q` `Ctrl+C` | Quit                                              |
+| `?`          | Toggle help                                       |
+| `i`          | Toggle track info (bitrate / format / tags)        |
+| `d`          | Toggle debug                                      |
+| `r`          | Search every lyric source and pick a candidate     |
+
+Inside the picker:
+
+| Key          | Action                                        |
+| ------------ | --------------------------------------------- |
+| `↑/↓` `j/k`  | Move through candidates (or scroll the preview) |
+| `Tab`        | Switch focus between the list and the preview  |
+| `Enter`      | Use the highlighted lyric                      |
+| `s`          | Use it and save next to the audio file         |
+| `Esc`        | Close the picker                               |
 
 ### How lyrics are resolved
 
 1. Extract embedded lyrics from the audio file (ID3 USLT / Vorbis Comment)
-2. Look for `<filename>.lrc` or `<filename>.lyric` next to the audio file
+2. Look for `<filename>.lrc` / `<filename>.lyric` (and `<title>.lrc`) next to the audio file
 3. If a `.t.lrc` / `.t.lyric` file exists alongside, translation lines are shown below each lyric line
-4. Check the local cache (location determined by `os.UserCacheDir()`, e.g. `~/Library/Caches/cmus-lyric/` on macOS, `~/.cache/cmus-lyric/` on Linux)
-5. If nothing is found, fetch from LRCLIB (preferred) then Netease Music, save as `.lrc` and cache
-   - **Duration tolerance**: ±2 seconds when matching tracks by duration
+4. Check the local cache (keyed by artist + title + duration)
+5. If nothing is found, query LRCLIB, Netease Music, Kugou and lyrics.ovh **in parallel** and use the best-scoring candidate
+6. Press `r` at any time to run the same search manually and choose a candidate yourself
+
+**Ranking**: candidates are scored by title similarity (60%), artist similarity (25%) and duration closeness (15%); synced (timestamped) lyrics always rank above plain text, and karaoke/remix/cover versions are penalised.
+
+**No lyrics?** If every source comes back empty (or the track is flagged instrumental), the player shows a track info panel with format, bitrate, size, year, genre, track/disc numbers and embedded artwork info instead of a fake "纯音乐，请欣赏" line.
 
 ### Album cover
 
@@ -135,8 +154,8 @@ cmus-lyric/
 ├── internal/
 │   ├── cmus/             # cmus IPC (Unix socket + exec fallback)
 │   ├── cover/            # Album cover display
-│   ├── lyric/            # Lyric loading, parsing, fetching, caching
-│   └── player/           # Bubble Tea model, view, styles
+│   ├── lyric/            # Lyric parsing, caching, sources (lrclib/netease/kugou/lyrics.ovh), audio probing
+│   └── player/           # Bubble Tea model, view, lyric picker, info panel
 ├── .github/workflows/    # CI/CD (auto-release on tag)
 ├── Taskfile.yml          # Build tasks
 ├── .golangci.yml         # Linter config (v2)

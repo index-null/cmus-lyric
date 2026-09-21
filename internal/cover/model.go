@@ -138,7 +138,7 @@ func loadCover(file, artist, title string, duration int) (image.Image, error) {
 			return img, nil
 		}
 	}
-	if data := lyric.LoadCoverFromCache(artist, title); data != nil {
+	if data := lyric.LoadCoverFromCache(artist, title, duration); data != nil {
 		if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
 			return img, nil
 		}
@@ -151,7 +151,7 @@ func loadCover(file, artist, title string, duration int) (image.Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	_ = lyric.SaveCoverToCache(artist, title, data)
+	_ = lyric.SaveCoverToCache(artist, title, duration, data)
 	img, _, err := image.Decode(bytes.NewReader(data))
 	return img, err
 }
