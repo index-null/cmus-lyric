@@ -187,6 +187,77 @@ func TestUpdatePickerKeys(t *testing.T) {
 	}
 }
 
+// TestUpdateQuitConfirm：q 不再直接退出，必须先确认（默认否）。
+func TestUpdateQuitConfirm(t *testing.T) {
+	m := NewModel()
+	m.width, m.height = 100, 30
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	got, ok := model.(Model)
+	if !ok {
+		t.Fatalf("expected Model, got %T", model)
+	}
+	if cmd != nil {
+		t.Fatal("q must not quit without confirmation")
+	}
+	if !got.confirmQuit {
+		t.Fatal("q should open the confirm dialog")
+	}
+	if out := got.View(); !strings.Contains(out, "Quit cmus-lyric?") {
+		t.Errorf("confirm dialog should be rendered:\n%s", out)
+	}
+
+	// 默认是否：随便按一个键都会取消。
+	model, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	got, ok = model.(Model)
+	if !ok {
+		t.Fatalf("expected Model, got %T", model)
+	}
+	if got.confirmQuit {
+		t.Error("n should dismiss the confirm dialog")
+	}
+
+	// Ctrl+C 仍然立即退出。
+	if _, cmd = got.Update(tea.KeyMsg{Type: tea.KeyCtrlC}); cmd == nil {
+		t.Error("ctrl+c should quit immediately")
+	}
+
+	// y 才真正退出。
+	model, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	got = model.(Model)
+	if _, cmd = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}}); cmd == nil {
+		t.Error("y should quit")
+	}
+}
+
+// TestUpdateQuitConfirmFromPicker：选择器里按 q 也要确认。
+func TestUpdateQuitConfirmFromPicker(t *testing.T) {
+	useTempCache(t)
+	m := NewModel()
+	m.width, m.height = 100, 30
+	m.track = playingTrack("/tmp/song.mp3", "A", "T", 100)
+	m, _ = m.startSearch()
+
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	got, ok := model.(Model)
+	if !ok {
+		t.Fatalf("expected Model, got %T", model)
+	}
+	if cmd != nil {
+		t.Fatal("q must not quit without confirmation")
+	}
+	if !got.confirmQuit {
+		t.Fatal("q should open the confirm dialog")
+	}
+
+	// Esc 取消后应回到选择器，而不是退出。
+	model, _ = got.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got = model.(Model)
+	if got.confirmQuit || !got.picker.active {
+		t.Errorf("Esc should cancel and return to the picker, confirm=%v picker=%v", got.confirmQuit, got.picker.active)
+	}
+}
+
 func TestUpdatePickerEscapeCloses(t *testing.T) {
 	useTempCache(t)
 	m := NewModel()

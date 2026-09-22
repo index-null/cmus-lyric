@@ -39,6 +39,8 @@ type Model struct {
 	info          lyric.AudioInfo
 	infoErr       error
 	picker        pickerState
+	// confirmQuit 表示「退出确认框」正在等待 y/N。
+	confirmQuit bool
 }
 
 type tickMsg struct{}
@@ -76,11 +78,17 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.confirmQuit {
+			return m.updateQuitConfirm(msg)
+		}
 		if m.picker.active {
 			return m.updatePicker(msg)
 		}
 		switch msg.String() {
-		case "q", "ctrl+c":
+		case "q":
+			m.confirmQuit = true
+			return m, nil
+		case "ctrl+c":
 			return m, tea.Quit
 		case "?":
 			m.showHelp = !m.showHelp
@@ -120,6 +128,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// updateQuitConfirm 处理退出确认框的按键：y 退出，其余任何键取消。
+func (m Model) updateQuitConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y", "ctrl+c":
+		return m, tea.Quit
+	default:
+		m.confirmQuit = false
+		return m, nil
+	}
 }
 
 func (m Model) poll() (Model, tea.Cmd) {

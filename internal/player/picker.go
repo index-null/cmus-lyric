@@ -37,7 +37,10 @@ func (p pickerState) selected() (lyric.Candidate, bool) {
 
 func (m Model) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case "q":
+		m.confirmQuit = true
+		return m, nil
+	case "ctrl+c":
 		return m, tea.Quit
 	case "esc":
 		m.picker = pickerState{}

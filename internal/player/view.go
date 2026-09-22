@@ -17,6 +17,11 @@ func (m Model) View() string {
 		return ""
 	}
 
+	// 确认框必须盖在任何面板之上，否则用户看不到自己在确认什么。
+	if m.confirmQuit {
+		return m.renderMain()
+	}
+
 	if m.showDebug {
 		return m.renderDebug()
 	}
@@ -25,6 +30,11 @@ func (m Model) View() string {
 		return m.renderHelp()
 	}
 
+	return m.renderMain()
+}
+
+// renderMain 是常规界面：头部 + 主体 + 底部进度条。
+func (m Model) renderMain() string {
 	borderStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(m.pal.Border.Hex())).
@@ -42,6 +52,9 @@ func (m Model) View() string {
 
 // renderBody 决定中间区域展示什么：候选选择器 / 歌曲信息 / 歌词。
 func (m Model) renderBody() string {
+	if m.confirmQuit {
+		return m.renderQuitConfirm()
+	}
 	if m.picker.active {
 		return m.renderPicker()
 	}
@@ -244,6 +257,44 @@ func (m Model) renderLyrics() string {
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
+// renderQuitConfirm 在正文区居中画出退出确认框，默认选项是「否」。
+func (m Model) renderQuitConfirm() string {
+	availH := m.bodyHeight()
+	w := m.innerWidth()
+	p := m.pal
+
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(p.Title.Hex())).
+		Background(lipgloss.Color(p.TitleBg.Hex())).
+		Padding(0, 1).
+		Render("Quit cmus-lyric?")
+
+	keyStyle := lipgloss.NewStyle().Bold(true)
+	yes := keyStyle.Foreground(lipgloss.Color(p.Primary.Hex())).Render("y")
+	no := keyStyle.Foreground(lipgloss.Color(p.Secondary.Hex())).Render("N")
+	hint := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(p.Upcoming.Hex())).
+		Render(yes + "  quit      " + no + " / Esc  cancel")
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(p.Border.Hex())).
+		Padding(0, 2).
+		Render(lipgloss.JoinVertical(lipgloss.Center, title, "", hint))
+
+	pad := max((availH-lipgloss.Height(box))/2, 0)
+	lines := make([]string, 0, availH)
+	for range pad {
+		lines = append(lines, "")
+	}
+	lines = append(lines, lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(box))
+	for len(lines) < availH {
+		lines = append(lines, "")
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
 func (m Model) renderFooter() string {
 	w := m.innerWidth()
 	p := m.pal
@@ -268,6 +319,9 @@ func (m Model) renderFooter() string {
 			Render("[" + m.lyricSource + "] ")
 	}
 	helpHint := footerStyle.Render("q: quit  r: lyrics  i: info  ?: help")
+	if m.confirmQuit {
+		helpHint = footerStyle.Render("y: quit  n / esc: cancel")
+	}
 	spacer := strings.Repeat(" ", max(0, w-lipgloss.Width(timeStr)-lipgloss.Width(sourceStr)-lipgloss.Width(helpHint)))
 	statusLine := timeStr + spacer + sourceStr + helpHint
 
@@ -301,7 +355,8 @@ func (m Model) renderHelp() string {
 	divider := gradientDivider(w, p.Primary, p.Secondary)
 
 	keys := []struct{ key, desc string }{
-		{"q / Ctrl+C", "quit"},
+		{"q", "quit (asks for confirmation, default no)"},
+		{"Ctrl+C", "quit immediately"},
 		{"?", "toggle help"},
 		{"i", "toggle track info (bitrate / tags)"},
 		{"d", "toggle debug"},
